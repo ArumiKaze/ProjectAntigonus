@@ -4,6 +4,14 @@
 #include "GameFramework/Actor.h"
 #include "VRMotionController.generated.h"
 
+UENUM(BlueprintType)
+enum class E_GRIPSTATE : uint8
+{
+	GRIP_OPEN,
+	GRIP_CANGRAB,
+	GRIP_GRAB
+};
+
 UCLASS()
 class PROJECTANTIGONUS_API AVRMotionController : public AActor
 {
@@ -15,36 +23,54 @@ private:
 
 	bool b_isroomscale;
 
-	UPROPERTY()
-	UHapticFeedbackEffect_Base* haptic_motioncontroller;
+	bool b_shouldgrip;
 
+	UPROPERTY()
+	UHapticFeedbackEffect_Base *haptic_motioncontroller;
+
+	UPROPERTY()
+	AActor *attachedactor;
+
+	//---Room scale set up---//
 	void SetupRoomScaleOutline();
 
+	//---Controller rumble---//
 	void RumbleController(float intensity);
+
+	//---Grabbing---//
+	UPROPERTY()
+	AActor* GetActorNearHand();
 
 protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	USceneComponent* Scene;
+	USceneComponent *scene;
 
+	//---Hand---//
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	class UMotionControllerComponent* MotionController;
-
+	class UMotionControllerComponent *motioncontroller;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	USkeletalMeshComponent* HandMesh;
-
+	USkeletalMeshComponent *handmesh;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	class USteamVRChaperoneComponent* SteamVRChaperone;
+	class USphereComponent *grabsphere;
 
 	//---Teleport Cylinder---//
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* TeleportCylinder;
+	UStaticMeshComponent *teleportcylinder;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* Ring;
+	UStaticMeshComponent *ring;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* Arrow;
+	UStaticMeshComponent *arrow;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* RoomScaleMesh;
+	UStaticMeshComponent *roomscalemesh;
+
+	//---SteamVRChaperone---//
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	class USteamVRChaperoneComponent *steamvrchaperone;
+
+	//---Grip Enum---//
+	UPROPERTY(BlueprintReadOnly)
+	E_GRIPSTATE gripstate;
 
 	virtual void BeginPlay() override;
 
