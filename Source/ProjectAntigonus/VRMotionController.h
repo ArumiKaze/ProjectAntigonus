@@ -21,9 +21,14 @@ private:
 
 	EControllerHand m_hand;
 
+	float telelaunchvelocity;
+
 	bool b_isroomscale;
 
 	bool b_shouldgrip;
+
+	bool b_isteleactive;
+	bool b_isvalidteledestination;
 
 	UPROPERTY()
 	UHapticFeedbackEffect_Base *haptic_motioncontroller;
@@ -31,15 +36,22 @@ private:
 	UPROPERTY()
 	AActor *attachedactor;
 
+	UPROPERTY()
+	TArray<class USplineMeshComponent*> array_splinemeshes;
+
 	//---Room scale set up---//
 	void SetupRoomScaleOutline();
+	void UpdateRoomScaleOutline();
 
 	//---Controller rumble---//
 	void RumbleController(float intensity);
 
 	//---Grabbing---//
-	UPROPERTY()
+	UFUNCTION()
 	AActor* GetActorNearHand();
+
+	//---Teleportation Arc---//
+	void HandleTeleportationArc();
 
 protected:
 
@@ -51,6 +63,10 @@ protected:
 	class UMotionControllerComponent *motioncontroller;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	USkeletalMeshComponent *handmesh;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	class UArrowComponent* arcdirection;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	class USplineComponent* arcspline;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	class USphereComponent *grabsphere;
 

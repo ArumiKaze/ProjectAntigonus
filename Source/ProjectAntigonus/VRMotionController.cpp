@@ -8,6 +8,12 @@
 #include "Runtime/Engine/Classes/Kismet/GameplayStatics.h"
 #include "Runtime/Engine/Classes/Haptics/HapticFeedbackEffect_Base.h"
 #include "Runtime/Engine/Classes/Components/SphereComponent.h"
+#include "Runtime/HeadMountedDisplay/Public/HeadMountedDisplayFunctionLibrary.h"
+#include "Runtime/Engine/Classes/Components/SplineMeshComponent.h"
+#include "Runtime/Engine/Classes/Components/SplineComponent.h"
+#include "Runtime/Engine/Classes/Components/ArrowComponent.h"
+#include "Runtime/Engine/Classes/Engine/World.h"
+#include "Runtime/NavigationSystem/Public/NavigationSystem.h"
 
 AVRMotionController::AVRMotionController()
 	:AVRMotionController(EControllerHand::Left)
@@ -15,6 +21,8 @@ AVRMotionController::AVRMotionController()
 }
 AVRMotionController::AVRMotionController(EControllerHand hand)
 {
+	telelaunchvelocity = 900.0f;
+
 	//Attached actor object
 	attachedactor = nullptr;
 
@@ -26,6 +34,9 @@ AVRMotionController::AVRMotionController(EControllerHand hand)
 	b_isroomscale = false;
 
 	b_shouldgrip = false;
+
+	b_isteleactive = false;
+	b_isvalidteledestination = false;
 
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -45,6 +56,10 @@ AVRMotionController::AVRMotionController(EControllerHand hand)
 	}
 	handmesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("HandMesh"));
 	handmesh->SetupAttachment(motioncontroller);
+	arcdirection = CreateDefaultSubobject<UArrowComponent>(TEXT("ArcDirection"));
+	arcdirection->SetupAttachment(handmesh);
+	arcspline = CreateDefaultSubobject<USplineComponent>(TEXT("ArcSpline"));
+	arcspline->SetupAttachment(handmesh);
 	grabsphere = CreateDefaultSubobject<USphereComponent>(TEXT("GrabSphere"));
 	grabsphere->SetupAttachment(handmesh);
 	grabsphere->SetSphereRadius(10.0f);
@@ -114,8 +129,24 @@ void AVRMotionController::Tick(float DeltaTime)
 			}
 		}
 	}
+
+	//Update room scale
+	UpdateRoomScaleOutline();
+
+	//Only let hand collide with environment while gripping
+	switch (gripstate)
+	{
+	case E_GRIPSTATE::GRIP_OPEN:
+	case E_GRIPSTATE::GRIP_CANGRAB:
+		handmesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		break;
+	case E_GRIPSTATE::GRIP_GRAB:
+		handmesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		break;
+	}
 }
 
+//---Room scale set up---//
 void AVRMotionController::SetupRoomScaleOutline()
 {
 	FVector OutRectCenter{ 0.0f };
@@ -132,6 +163,18 @@ void AVRMotionController::SetupRoomScaleOutline()
 		float chaperonemeshheight{ 70.0f };
 		roomscalemesh->SetWorldScale3D(FVector(OutSideLengthX, OutSideLengthY, chaperonemeshheight));
 		roomscalemesh->SetRelativeRotation(OutRectRotation);
+	}
+}
+void AVRMotionController::UpdateRoomScaleOutline()
+{
+	if (roomscalemesh->IsVisible())
+	{
+		FRotator hmdorientation{ 0.0f };
+		FVector hmdposition{ 0.0f };
+		UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(hmdorientation, hmdposition);
+		
+		FVector teleporttarget{ UKismetMathLibrary::Quat_UnrotateVector(FRotator{ 0.0f, hmdorientation.Yaw, 0.0f }.Quaternion() , FVector{ hmdposition.X, hmdposition.Y, 0.0f } / -1.0f) };
+		roomscalemesh->SetRelativeLocation(teleporttarget, false, false);
 	}
 }
 
@@ -160,4 +203,56 @@ AActor* AVRMotionController::GetActorNearHand()
 		}
 	}
 	return nearestoverlappingactor;
+}
+
+//---Teleportation Arc---//
+void AVRMotionController::HandleTeleportationArc()
+{
+	//Clear tele arc
+	if (array_splinemeshes.IsValidIndex(0))
+	{
+		while (array_splinemeshes.IsValidIndex(0))
+		{
+			//This destroys the component but it does not remove it from the array.
+			array_splinemeshes[0]->DestroyComponent();
+			array_splinemeshes.RemoveAt(0);
+		}
+	}
+	arcspline->ClearSplinePoints(true);
+
+	//Trace teleport destionation
+	bool tracetelesuccess{ false };
+	TArray<FPredictProjectilePathPointData> array_tracepoints;
+	FVector navmeshlocation{ 0.0f };
+	FVector tracelocation{ 0.0f };
+	if (b_isteleactive)
+	{
+		FPredictProjectilePathParams params;
+		params.StartLocation = FVector{ arcdirection->GetComponentLocation() };
+		params.LaunchVelocity = FVector{ arcdirection->GetForwardVector() * telelaunchvelocity };
+		params.bTraceWithCollision = true;
+		params.ProjectileRadius = 0.0f;
+		TArray<TEnumAsByte<EObjectTypeQuery>> teleboundry;
+		teleboundry.Add(EObjectTypeQuery::ObjectTypeQuery1);
+		params.ObjectTypes = teleboundry;
+		params.bTraceComplex = false;
+		params.SimFrequency = 30.0f;
+
+		FPredictProjectilePathResult result;
+
+		bool b_hit{ UGameplayStatics::PredictProjectilePath(this, params, result) };
+
+		UNavigationSystemV1* navsystem = Cast<UNavigationSystemV1>(GetWorld()->GetNavigationSystem());
+		FNavLocation projectedlocation;
+		bool b_projectpoint{ navsystem->ProjectPointToNavigation(result.HitResult.Location, projectedlocation, FVector{ 500.0f }, (ANavigationData*)0, 0) };
+		
+
+		tracetelesuccess = b_hit && b_projectpoint;
+		array_tracepoints = result.PathData;
+		navmeshlocation = projectedlocation;
+		tracelocation = result.HitResult.Location;
+	}
+
+	b_isvalidteledestination = tracetelesuccess;
+
 }
