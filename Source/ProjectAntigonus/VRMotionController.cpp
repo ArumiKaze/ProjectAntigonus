@@ -14,6 +14,7 @@
 #include "Runtime/Engine/Classes/Components/ArrowComponent.h"
 #include "Runtime/Engine/Classes/Engine/World.h"
 #include "Runtime/NavigationSystem/Public/NavigationSystem.h"
+#include "Runtime/Engine/Classes/Materials/MaterialInstanceDynamic.h"
 
 AVRMotionController::AVRMotionController()
 	:AVRMotionController(EControllerHand::Left)
@@ -37,8 +38,11 @@ AVRMotionController::AVRMotionController(EControllerHand hand)
 
 	b_isteleactive = false;
 	b_isvalidteledestination = false;
+	b_isvalidpreviousframeteledestination = false;
 
 	PrimaryActorTick.bCanEverTick = true;
+
+	telerotation = FRotator{ 0.0f };
 
 	scene = CreateDefaultSubobject<USceneComponent>(TEXT("Scene"));
 
@@ -63,6 +67,10 @@ AVRMotionController::AVRMotionController(EControllerHand hand)
 	grabsphere = CreateDefaultSubobject<USphereComponent>(TEXT("GrabSphere"));
 	grabsphere->SetupAttachment(handmesh);
 	grabsphere->SetSphereRadius(10.0f);
+
+	//Load arc end point
+	arcendpoint = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArcEndPoint"));
+	arcendpoint->SetupAttachment(scene);
 	
 	//Load Teleport Cylinder meshes and materials
 	teleportcylinder = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TeleportCylinder"));
@@ -82,6 +90,16 @@ AVRMotionController::AVRMotionController(EControllerHand hand)
 	if (hapticcurve.Object) {
 		haptic_motioncontroller = hapticcurve.Object;
 	}
+
+	//
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> beam(TEXT("StaticMesh'/Game/VirtualReality/Meshes/BeamMesh.BeamMesh'"));
+	if (beam.Object) {
+		mesh_beamspline = beam.Object;
+	}
+	static ConstructorHelpers::FObjectFinder<UMaterial> spline(TEXT("Material'/Game/VirtualReality/Materials/M_SplineArcMat.M_SplineArcMat'"));
+	if (spline.Object) {
+		mat_spline = spline.Object;
+	}
 }
 
 
@@ -100,6 +118,9 @@ void AVRMotionController::BeginPlay()
 	{
 		handmesh->SetWorldScale3D(FVector(1.0f, 1.0f, -1.0f));
 	}
+
+	grabsphere->OnComponentBeginOverlap.AddDynamic(this, &AVRMotionController::GrabSphereOnOverlap);
+	handmesh->OnComponentHit.AddDynamic(this, &AVRMotionController::ControllerMeshOnHit);
 }
 
 void AVRMotionController::Tick(float DeltaTime)
@@ -129,6 +150,9 @@ void AVRMotionController::Tick(float DeltaTime)
 			}
 		}
 	}
+
+	//Handle teleport arc
+	HandleTeleportationArc();
 
 	//Update room scale
 	UpdateRoomScaleOutline();
@@ -211,18 +235,22 @@ void AVRMotionController::HandleTeleportationArc()
 	//Clear tele arc
 	if (array_splinemeshes.IsValidIndex(0))
 	{
+		array_splinemeshes.Empty();
+		/*
 		while (array_splinemeshes.IsValidIndex(0))
 		{
 			//This destroys the component but it does not remove it from the array.
 			array_splinemeshes[0]->DestroyComponent();
 			array_splinemeshes.RemoveAt(0);
 		}
+		*/
 	}
 	arcspline->ClearSplinePoints(true);
 
 	//Trace teleport destionation
 	bool tracetelesuccess{ false };
-	TArray<FPredictProjectilePathPointData> array_tracepoints;
+	//TArray<FPredictProjectilePathPointData> array_tracepoints;
+	TArray<FVector> array_tracepoints;
 	FVector navmeshlocation{ 0.0f };
 	FVector tracelocation{ 0.0f };
 	if (b_isteleactive)
@@ -233,7 +261,8 @@ void AVRMotionController::HandleTeleportationArc()
 		params.bTraceWithCollision = true;
 		params.ProjectileRadius = 0.0f;
 		TArray<TEnumAsByte<EObjectTypeQuery>> teleboundry;
-		teleboundry.Add(EObjectTypeQuery::ObjectTypeQuery1);
+		//teleboundry.Add(EObjectTypeQuery::ObjectTypeQuery1);
+		teleboundry.Add(UEngineTypes::ConvertToObjectType(ECC_WorldStatic));
 		params.ObjectTypes = teleboundry;
 		params.bTraceComplex = false;
 		params.SimFrequency = 30.0f;
@@ -244,15 +273,107 @@ void AVRMotionController::HandleTeleportationArc()
 
 		UNavigationSystemV1* navsystem = Cast<UNavigationSystemV1>(GetWorld()->GetNavigationSystem());
 		FNavLocation projectedlocation;
-		bool b_projectpoint{ navsystem->ProjectPointToNavigation(result.HitResult.Location, projectedlocation, FVector{ 500.0f }, (ANavigationData*)0, 0) };
+		//bool b_projectpoint{ navsystem->ProjectPointToNavigation(result.HitResult.Location, projectedlocation, FVector{ 500.0f }, (ANavigationData*)0, 0) };
 		
 
-		tracetelesuccess = b_hit && b_projectpoint;
-		array_tracepoints = result.PathData;
+		//tracetelesuccess = b_hit && b_projectpoint;
+		for (const auto &eachpoint : result.PathData)
+		{
+			array_tracepoints.Emplace(eachpoint.Location);
+		}
 		navmeshlocation = projectedlocation;
 		tracelocation = result.HitResult.Location;
 	}
 
 	b_isvalidteledestination = tracetelesuccess;
+	teleportcylinder->SetVisibility(b_isvalidteledestination, true);
 
+	TArray<TEnumAsByte<EObjectTypeQuery>> floorboundry;
+	floorboundry.Add(UEngineTypes::ConvertToObjectType(ECC_WorldStatic));
+	FHitResult outhit;
+	UKismetSystemLibrary::LineTraceSingleForObjects(this, navmeshlocation, FVector{ 0.0f, 0.0f, navmeshlocation.Z + -200.0f }, floorboundry, false, TArray<AActor*>(), EDrawDebugTrace::None, outhit, true);
+
+	FVector newlocation{ outhit.bBlockingHit ? outhit.ImpactPoint : navmeshlocation };
+	teleportcylinder->SetWorldLocation(newlocation, false, nullptr, ETeleportType::TeleportPhysics);
+
+	//Rumble controller when a valid teleport location is found
+	if ((b_isvalidteledestination && !b_isvalidpreviousframeteledestination) || (b_isvalidpreviousframeteledestination && !b_isvalidteledestination))
+	{
+		RumbleController(0.3);
+	}
+
+	b_isvalidpreviousframeteledestination = tracetelesuccess;
+
+	//Create small stub line when it fails to find a teleport location
+	if (!tracetelesuccess)
+	{
+		if (array_tracepoints.IsValidIndex(0))
+		{
+			array_tracepoints.Empty();
+		}
+		array_tracepoints.Emplace(arcdirection->GetComponentLocation());
+		array_tracepoints.Emplace(arcdirection->GetComponentLocation() + (arcdirection->GetForwardVector() * 20.0f));
+	}
+
+	//Build spline from all trace points, generates tangets to build a smoothly curved spline mesh
+	for (const auto &eachdata : array_tracepoints)
+	{
+		arcspline->AddSplinePoint(eachdata, ESplineCoordinateSpace::Local, true);
+	}
+
+	//Update the point type to create the curve
+	arcspline->SetSplinePointType(array_tracepoints.Num(), ESplinePointType::CurveClamped, true);
+
+	for (int i{ 0 }; i < arcspline->GetNumberOfSplinePoints() - 2; ++i)
+	{
+
+		USplineMeshComponent* splinemesh = NewObject<USplineMeshComponent>(arcspline);
+
+		splinemesh->CreationMethod = EComponentCreationMethod::UserConstructionScript;
+		RegisterAllComponents();
+		splinemesh->SetMobility(EComponentMobility::Movable);
+		//splinemesh->SetupAttachment(arcspline);
+
+		UMaterialInstanceDynamic* dynamicMat = UMaterialInstanceDynamic::Create(mat_spline, NULL);
+		//dynamicMat->SetVectorParameterValue(TEXT("Color"), FLinearColor(mSegments[i].mColor));
+
+		splinemesh->bCastDynamicShadow = false;
+		splinemesh->SetStaticMesh(mesh_beamspline);
+		splinemesh->SetMaterial(0, dynamicMat);
+
+		//Width of the mesh 
+		//splinemesh->SetStartScale(FVector2D(50, 50));
+		//splinemesh->SetEndScale(FVector2D(50, 50));
+
+		array_splinemeshes.Emplace(splinemesh);
+
+		FVector pointlocationstart{ array_tracepoints[i] };
+		FVector pointtangentstart{ arcspline->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Local) };
+		FVector pointlocationend{ array_tracepoints[i+1] };
+		FVector pointtangentend{ arcspline->GetTangentAtSplinePoint(i+1, ESplineCoordinateSpace::Local) };
+
+		//Set tangents and position to slightly bend the cylinder, all cylinders combined create a smooth arc
+		splinemesh->SetStartAndEnd(pointlocationstart, pointtangentstart, pointlocationend, pointtangentend, true);
+	}
+
+	arcendpoint->SetVisibility(tracetelesuccess && b_isteleactive, false);
+	arcendpoint->SetWorldLocation(tracelocation, false, nullptr, ETeleportType::TeleportPhysics);
+	FRotator HMDrotation{ 0.0f };
+	FVector HMDposition{ 0.0f };
+	UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(HMDrotation, HMDposition);
+	arrow->SetWorldRotation(UKismetMathLibrary::ComposeRotators(telerotation, FRotator{ 0.0f, HMDrotation.Yaw, 0.0f }));
+	roomscalemesh->SetWorldRotation(telerotation);
+}
+
+//---Rumble controller on overlap with valid static mesh---//
+void AVRMotionController::GrabSphereOnOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (Cast<UStaticMeshComponent>(OtherComp)->IsSimulatingPhysics())
+	{
+		RumbleController(0.8f);
+	}
+}
+void AVRMotionController::ControllerMeshOnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
+{
+	RumbleController(UKismetMathLibrary::MapRangeClamped(NormalImpulse.Size(), 0.0f, 1500.0f, 0.0f, 0.8f));
 }

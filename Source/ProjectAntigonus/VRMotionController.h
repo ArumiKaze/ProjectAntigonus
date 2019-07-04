@@ -29,12 +29,23 @@ private:
 
 	bool b_isteleactive;
 	bool b_isvalidteledestination;
+	bool b_isvalidpreviousframeteledestination;
+
+	FRotator telerotation;
 
 	UPROPERTY()
 	UHapticFeedbackEffect_Base *haptic_motioncontroller;
 
 	UPROPERTY()
 	AActor *attachedactor;
+
+	UPROPERTY()
+	UStaticMesh* mesh_beamspline;
+	UPROPERTY()
+	UMaterial* mat_spline;
+
+	UPROPERTY()
+	UStaticMeshComponent* arcendpoint;
 
 	UPROPERTY()
 	TArray<class USplineMeshComponent*> array_splinemeshes;
@@ -52,6 +63,10 @@ private:
 
 	//---Teleportation Arc---//
 	void HandleTeleportationArc();
+
+	//---Rumble Events---//
+	void GrabSphereOnOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	void ControllerMeshOnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
 
 protected:
 
