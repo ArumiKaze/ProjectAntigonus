@@ -137,7 +137,8 @@ void AVRMotionController::Tick(float DeltaTime)
 	}
 	else
 	{
-		if (GetActorNearHand() != nullptr)
+		AActor* tempactor{ nullptr };
+		if (GetActorNearHand(tempactor) != nullptr)
 		{
 			gripstate = E_GRIPSTATE::GRIP_CANGRAB;
 		}
@@ -212,10 +213,9 @@ void AVRMotionController::RumbleController(float intensity)
 
 //---Grabbing---//
 //Get an actor near the hand
-AActor* AVRMotionController::GetActorNearHand()
+AActor*& AVRMotionController::GetActorNearHand(AActor *&actor)
 {
 	float nearestoverlap{ 10000.0f };
-	AActor* nearestoverlappingactor{ nullptr };
 
 	TArray <AActor*> actorarray;
 	grabsphere->GetOverlappingActors(actorarray, AActor::StaticClass());
@@ -225,11 +225,11 @@ AActor* AVRMotionController::GetActorNearHand()
 		float tempoverlap{ (eachactor->GetActorLocation() - grabsphere->GetComponentLocation()).Size() };
 		if ( tempoverlap < nearestoverlap)
 		{
-			nearestoverlappingactor = eachactor;
+			actor = eachactor;
 			nearestoverlap = tempoverlap;
 		}
 	}
-	return nearestoverlappingactor;
+	return actor;
 }
 
 //---Teleportation Arc---//
@@ -412,11 +412,13 @@ void AVRMotionController::DisableTele()
 void AVRMotionController::GrabActor()
 {
 	b_shouldgrip = true;
-	AActor* actorexist{ GetActorNearHand() };
-	if (actorexist)
+	AActor* tempactor{ nullptr };
+	if (GetActorNearHand(tempactor))
 	{
-		attachedactor = actorexist;
-		Cast<AVRPickupObject>(attachedactor)->Pickup(motioncontroller);
+		attachedactor = Cast<AVRPickupObject>(tempactor);
+		//AVRPickupObject* object = Cast<AVRPickupObject>(attachedactor);
+		attachedactor->Pickup(motioncontroller);
+		//Cast<AVRPickupObject>(attachedactor)->Pickup(motioncontroller);
 		RumbleController(0.7f);
 	}
 }
@@ -427,7 +429,7 @@ void AVRMotionController::ReleaseActor()
 	{
 		if (attachedactor->GetRootComponent()->GetAttachParent() == motioncontroller)
 		{
-			Cast<AVRPickupObject>(attachedactor)->Drop();
+			attachedactor->Drop();
 			RumbleController(0.2f);
 		}
 		attachedactor = nullptr;

@@ -4,19 +4,22 @@
 
 AVRPickupObject::AVRPickupObject()
 {
-	mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMeshComponent"));
+	//mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMeshComponent"));
 }
 
 void AVRPickupObject::Pickup(UMotionControllerComponent *& parent)
 {
-	mesh->SetSimulatePhysics(false);
-	FAttachmentTransformRules rules{ EAttachmentRule::KeepWorld, EAttachmentRule::KeepWorld, EAttachmentRule::KeepWorld, false };
-	RootComponent->AttachToComponent(parent, rules, FName(TEXT("")));
+	if (parent && GetStaticMeshComponent())
+	{
+		GetStaticMeshComponent()->SetSimulatePhysics(false);
+		FAttachmentTransformRules rules{ EAttachmentRule::KeepWorld, EAttachmentRule::KeepWorld, EAttachmentRule::KeepWorld, false };
+		GetStaticMeshComponent()->AttachToComponent(parent, rules, FName(TEXT("")));
+	}
 }
 
 void AVRPickupObject::Drop()
 {
-	mesh->SetSimulatePhysics(true);
+	GetStaticMeshComponent()->SetSimulatePhysics(true);
 	FDetachmentTransformRules rules{ EDetachmentRule::KeepWorld, EDetachmentRule::KeepWorld, EDetachmentRule::KeepWorld, false };
 	DetachFromActor(rules);
 }

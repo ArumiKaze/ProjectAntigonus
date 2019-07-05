@@ -11,8 +11,8 @@ class PROJECTANTIGONUS_API AVRPickupObject : public AStaticMeshActor
 
 protected:
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* mesh;
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	//UStaticMeshComponent* mesh;
 	
 public:
 

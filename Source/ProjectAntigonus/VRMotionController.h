@@ -39,7 +39,7 @@ private:
 	UHapticFeedbackEffect_Base *haptic_motioncontroller;
 
 	UPROPERTY()
-	AActor *attachedactor;
+	class AVRPickupObject *attachedactor;
 
 	UPROPERTY()
 	UStaticMesh* mesh_beamspline;
@@ -61,7 +61,7 @@ private:
 
 	//---Grabbing---//
 	UFUNCTION()
-	AActor* GetActorNearHand();
+	AActor*& GetActorNearHand(AActor *&actor);
 
 	//---Teleportation Arc---//
 	void HandleTeleportationArc();
