@@ -15,12 +15,9 @@
 #include "Runtime/Engine/Classes/Engine/World.h"
 #include "Runtime/NavigationSystem/Public/NavigationSystem.h"
 #include "Runtime/Engine/Classes/Materials/MaterialInstanceDynamic.h"
+#include "VRPickupObject.h"
 
 AVRMotionController::AVRMotionController()
-	:AVRMotionController(EControllerHand::Left)
-{
-}
-AVRMotionController::AVRMotionController(EControllerHand hand)
 {
 	telelaunchvelocity = 900.0f;
 
@@ -29,8 +26,6 @@ AVRMotionController::AVRMotionController(EControllerHand hand)
 
 	//Grip enum state
 	gripstate = E_GRIPSTATE::GRIP_OPEN;
-
-	m_hand = hand;
 
 	b_isroomscale = false;
 
@@ -44,13 +39,15 @@ AVRMotionController::AVRMotionController(EControllerHand hand)
 
 	telerotation = FRotator{ 0.0f };
 
+	initialcontrollerrotation = FRotator{ 0.0f };
+
 	scene = CreateDefaultSubobject<USceneComponent>(TEXT("Scene"));
 
 	//Load hand
 	motioncontroller = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("MotionController"));
 	motioncontroller->SetupAttachment(scene);
 	motioncontroller->SetTrackingSource(EControllerHand::Left);
-	if (hand == EControllerHand::Left)
+	if (m_hand == EControllerHand::Left)
 	{
 		motioncontroller->MotionSource = FName(TEXT("Left"));
 	}
@@ -71,7 +68,7 @@ AVRMotionController::AVRMotionController(EControllerHand hand)
 	//Load arc end point
 	arcendpoint = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArcEndPoint"));
 	arcendpoint->SetupAttachment(scene);
-	
+
 	//Load Teleport Cylinder meshes and materials
 	teleportcylinder = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TeleportCylinder"));
 	teleportcylinder->SetupAttachment(scene);
@@ -376,4 +373,85 @@ void AVRMotionController::GrabSphereOnOverlap(UPrimitiveComponent* OverlappedCom
 void AVRMotionController::ControllerMeshOnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
 {
 	RumbleController(UKismetMathLibrary::MapRangeClamped(NormalImpulse.Size(), 0.0f, 1500.0f, 0.0f, 0.8f));
+}
+
+//---Initialize hand---//
+void AVRMotionController::Init(EControllerHand p_hand)
+{
+	m_hand = p_hand;
+}
+
+//---Teleportation---//
+void AVRMotionController::ActivateTele()
+{
+	b_isteleactive = true;
+	teleportcylinder->SetVisibility(true, true);
+	//Only show during teleport if room-scale is available
+	roomscalemesh->SetVisibility(b_isroomscale, false);
+	//Store rotation for later to compare roll value to support wrist-based orientation of the teleporter
+	initialcontrollerrotation = motioncontroller->GetComponentRotation();
+}
+void AVRMotionController::DisableTele()
+{
+	if (b_isteleactive)
+	{
+		b_isteleactive = false;
+		teleportcylinder->SetVisibility(false, true);
+		arcendpoint->SetVisibility(false, false);
+		roomscalemesh->SetVisibility(false, false);
+	}
+}
+
+//---Grab and Release Actors---//
+void AVRMotionController::GrabActor()
+{
+	b_shouldgrip = true;
+	AActor* actorexist{ GetActorNearHand() };
+	if (actorexist)
+	{
+		attachedactor = actorexist;
+		Cast<AVRPickupObject>(attachedactor)->Pickup(motioncontroller);
+		RumbleController(0.7f);
+	}
+}
+void AVRMotionController::ReleaseActor()
+{
+	b_shouldgrip = false;
+	if (attachedactor)
+	{
+		if (attachedactor->GetRootComponent()->GetAttachParent() == motioncontroller)
+		{
+			Cast<AVRPickupObject>(attachedactor)->Drop();
+			RumbleController(0.2f);
+		}
+		attachedactor = nullptr;
+	}
+}
+
+//---Getter---//
+void AVRMotionController::SetTeleRotation(FRotator newrot)
+{
+	telerotation = newrot;
+}
+bool AVRMotionController::GetIsTeleActive()
+{
+	return b_isteleactive;
+}
+bool AVRMotionController::GetIsValidTeleDest()
+{
+	return b_isvalidteledestination;
+}
+FVector AVRMotionController::GetTeleDestLoc()
+{
+	FVector pos{ 0.0f };
+	FRotator ori{ 0.0f };
+	UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(ori, pos);
+
+	UKismetMathLibrary::Quat_RotateVector(telerotation.Quaternion(), FVector{ pos.X, pos.Y, 0.0f });
+
+	return FVector{ teleportcylinder->GetComponentLocation() - UKismetMathLibrary::Quat_RotateVector(telerotation.Quaternion(), FVector{ pos.X, pos.Y, 0.0f }) };
+}
+FRotator AVRMotionController::GetTeleDestRot()
+{
+	return telerotation;
 }

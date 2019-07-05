@@ -33,6 +33,8 @@ private:
 
 	FRotator telerotation;
 
+	FRotator initialcontrollerrotation;
+
 	UPROPERTY()
 	UHapticFeedbackEffect_Base *haptic_motioncontroller;
 
@@ -108,8 +110,24 @@ protected:
 public:	
 
 	AVRMotionController();
-	AVRMotionController(EControllerHand hand);
 
 	virtual void Tick(float DeltaTime) override;
 
+	//---Initialize hand---//
+	void Init(EControllerHand p_hand);
+
+	//---Teleportation---//
+	void ActivateTele();
+	void DisableTele();
+
+	//---Grab and Release Actors---//
+	void GrabActor();
+	void ReleaseActor();
+
+	//---Getter---//
+	void SetTeleRotation(FRotator newrot);
+	bool GetIsTeleActive();
+	bool GetIsValidTeleDest();
+	FVector GetTeleDestLoc();
+	FRotator GetTeleDestRot();
 };
