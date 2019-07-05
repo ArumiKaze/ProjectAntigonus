@@ -16,6 +16,8 @@
 #include "Runtime/NavigationSystem/Public/NavigationSystem.h"
 #include "Runtime/Engine/Classes/Materials/MaterialInstanceDynamic.h"
 #include "VRPickupObject.h"
+#include "VRCharacterPawn.h"
+#include "XRMotionControllerBase.h"
 
 AVRMotionController::AVRMotionController()
 {
@@ -44,17 +46,16 @@ AVRMotionController::AVRMotionController()
 	scene = CreateDefaultSubobject<USceneComponent>(TEXT("Scene"));
 
 	//Load hand
+
+	AVRCharacterPawn* pawnref{ Cast<AVRCharacterPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0)) };
+	if (pawnref)
+	{
+		m_hand = pawnref->GetPawnHand();
+	}
+
 	motioncontroller = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("MotionController"));
 	motioncontroller->SetupAttachment(scene);
-	motioncontroller->SetTrackingSource(EControllerHand::Left);
-	if (m_hand == EControllerHand::Left)
-	{
-		motioncontroller->MotionSource = FName(TEXT("Left"));
-	}
-	else
-	{
-		motioncontroller->MotionSource = FName(TEXT("Right"));
-	}
+	//motioncontroller->SetTrackingSource(m_hand);
 	handmesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("HandMesh"));
 	handmesh->SetupAttachment(motioncontroller);
 	arcdirection = CreateDefaultSubobject<UArrowComponent>(TEXT("ArcDirection"));
@@ -113,7 +114,12 @@ void AVRMotionController::BeginPlay()
 	//Invert scale on hand mesh to create left hand
 	if (m_hand == EControllerHand::Left)
 	{
+		motioncontroller->MotionSource = FXRMotionControllerBase::LeftHandSourceId;
 		handmesh->SetWorldScale3D(FVector(1.0f, 1.0f, -1.0f));
+	}
+	else
+	{
+		motioncontroller->MotionSource = FXRMotionControllerBase::RightHandSourceId;
 	}
 
 	grabsphere->OnComponentBeginOverlap.AddDynamic(this, &AVRMotionController::GrabSphereOnOverlap);

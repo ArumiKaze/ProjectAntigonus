@@ -33,6 +33,8 @@ private:
 	FTimerDelegate camerafadedelegate;
 	FTimerHandle camerafadetimer;
 
+	EControllerHand temphand;
+
 	//---Blueprint Controllers---//
 	TSubclassOf<class AVRMotionController> handcontroller;
 	UPROPERTY()
@@ -86,4 +88,6 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	EControllerHand GetPawnHand();
 };

@@ -130,6 +130,20 @@ void AVRCharacterPawn::SetupVROptions()
 	UWorld* worldexist{ GetWorld() };
 	if (worldexist)
 	{
+		FActorSpawnParameters spawnparams;
+		spawnparams.Owner = this;
+		spawnparams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		temphand = EControllerHand::Left;
+		lefthand = GetWorld()->SpawnActor<AVRMotionController>(handcontroller, FVector{}, FRotator{}, spawnparams);
+		FAttachmentTransformRules rules{ EAttachmentRule::SnapToTarget, EAttachmentRule::SnapToTarget, EAttachmentRule::KeepWorld, false };
+		lefthand->AttachToComponent(vrorigin, rules, FName(TEXT("")));
+
+		temphand = EControllerHand::Right;
+		righthand = GetWorld()->SpawnActor<AVRMotionController>(handcontroller, FVector{}, FRotator{}, spawnparams);
+		righthand->AttachToComponent(vrorigin, rules, FName(TEXT("")));
+
+		/*
 		//Left
 		AVRMotionController* left_deferredhand{ Cast<AVRMotionController>(UGameplayStatics::BeginDeferredActorSpawnFromClass(this, handcontroller, FTransform{}, ESpawnActorCollisionHandlingMethod::AlwaysSpawn, this)) };
 		if (left_deferredhand)
@@ -151,6 +165,7 @@ void AVRCharacterPawn::SetupVROptions()
 			FAttachmentTransformRules rules{ EAttachmentRule::SnapToTarget, EAttachmentRule::SnapToTarget, EAttachmentRule::KeepWorld, false };
 			righthand->AttachToComponent(vrorigin, rules, FName(TEXT("")));
 		}
+		*/
 	}
 }
 
@@ -253,4 +268,9 @@ FRotator AVRCharacterPawn::GetRotationFromInput(float upaxis, float rightaxis, A
 	}
 
 	return returnvalue;
+}
+
+EControllerHand AVRCharacterPawn::GetPawnHand()
+{
+	return temphand;
 }
