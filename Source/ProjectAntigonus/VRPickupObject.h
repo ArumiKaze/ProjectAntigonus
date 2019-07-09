@@ -19,7 +19,7 @@ public:
 	AVRPickupObject();
 
 	//--- Pick up---//
-	void Pickup(class UMotionControllerComponent *& parent);
+	void Pickup(class UMotionControllerComponent * parent);
 
 	//---Drop---//
 	void Drop();

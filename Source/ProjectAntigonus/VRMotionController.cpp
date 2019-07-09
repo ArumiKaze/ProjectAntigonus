@@ -272,7 +272,7 @@ void AVRMotionController::HandleTeleportationArc()
 
 		FPredictProjectilePathResult result;
 
-		bool b_hit{ UGameplayStatics::PredictProjectilePath(this, params, result) };
+		tracetelesuccess = UGameplayStatics::PredictProjectilePath(this, params, result);
 
 		UNavigationSystemV1* navsystem = Cast<UNavigationSystemV1>(GetWorld()->GetNavigationSystem());
 		FNavLocation projectedlocation;
@@ -289,6 +289,7 @@ void AVRMotionController::HandleTeleportationArc()
 	}
 
 	b_isvalidteledestination = tracetelesuccess;
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("%d"), b_isvalidteledestination));
 	teleportcylinder->SetVisibility(b_isvalidteledestination, true);
 
 	TArray<TEnumAsByte<EObjectTypeQuery>> floorboundry;
@@ -416,10 +417,11 @@ void AVRMotionController::GrabActor()
 	if (GetActorNearHand(tempactor))
 	{
 		attachedactor = Cast<AVRPickupObject>(tempactor);
-		//AVRPickupObject* object = Cast<AVRPickupObject>(attachedactor);
-		attachedactor->Pickup(motioncontroller);
-		//Cast<AVRPickupObject>(attachedactor)->Pickup(motioncontroller);
-		RumbleController(0.7f);
+		if (attachedactor)
+		{
+			attachedactor->Pickup(motioncontroller);
+			RumbleController(0.7f);
+		}
 	}
 }
 void AVRMotionController::ReleaseActor()
