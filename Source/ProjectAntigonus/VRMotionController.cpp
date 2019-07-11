@@ -62,6 +62,7 @@ AVRMotionController::AVRMotionController()
 	arcdirection->SetupAttachment(handmesh);
 	arcspline = CreateDefaultSubobject<USplineComponent>(TEXT("ArcSpline"));
 	arcspline->SetupAttachment(handmesh);
+	arcspline->SetMobility(EComponentMobility::Movable);
 	grabsphere = CreateDefaultSubobject<USphereComponent>(TEXT("GrabSphere"));
 	grabsphere->SetupAttachment(handmesh);
 	grabsphere->SetSphereRadius(10.0f);
@@ -90,6 +91,7 @@ AVRMotionController::AVRMotionController()
 	}
 
 	//
+
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> beam(TEXT("StaticMesh'/Game/VirtualReality/Meshes/BeamMesh.BeamMesh'"));
 	if (beam.Object) {
 		mesh_beamspline = beam.Object;
@@ -238,24 +240,17 @@ void AVRMotionController::HandleTeleportationArc()
 	//Clear tele arc
 	if (array_splinemeshes.IsValidIndex(0))
 	{
-		array_splinemeshes.Empty();
-		/*
-		while (array_splinemeshes.IsValidIndex(0))
+		for (const auto &mesh : array_splinemeshes)
 		{
-			//This destroys the component but it does not remove it from the array.
-			array_splinemeshes[0]->DestroyComponent();
-			array_splinemeshes.RemoveAt(0);
+			if (mesh)
+			{
+				mesh->DestroyComponent();
+			}
 		}
-		*/
+		array_splinemeshes.Empty();
 	}
 	arcspline->ClearSplinePoints(true);
 
-	//Trace teleport destionation
-	bool tracetelesuccess{ false };
-	//TArray<FPredictProjectilePathPointData> array_tracepoints;
-	TArray<FVector> array_tracepoints;
-	FVector navmeshlocation{ 0.0f };
-	FVector tracelocation{ 0.0f };
 	if (b_isteleactive)
 	{
 		FPredictProjectilePathParams params;
@@ -264,109 +259,99 @@ void AVRMotionController::HandleTeleportationArc()
 		params.bTraceWithCollision = true;
 		params.ProjectileRadius = 0.0f;
 		TArray<TEnumAsByte<EObjectTypeQuery>> teleboundry;
-		//teleboundry.Add(EObjectTypeQuery::ObjectTypeQuery1);
-		teleboundry.Add(UEngineTypes::ConvertToObjectType(ECC_WorldStatic));
+		teleboundry.Emplace(UEngineTypes::ConvertToObjectType(ECC_WorldStatic));
 		params.ObjectTypes = teleboundry;
 		params.bTraceComplex = false;
 		params.SimFrequency = 30.0f;
-
 		FPredictProjectilePathResult result;
 
-		tracetelesuccess = UGameplayStatics::PredictProjectilePath(this, params, result);
+		bool b_hit = UGameplayStatics::PredictProjectilePath(this, params, result);
 
 		UNavigationSystemV1* navsystem = Cast<UNavigationSystemV1>(GetWorld()->GetNavigationSystem());
+		bool b_pointhit;
 		FNavLocation projectedlocation;
-		//bool b_projectpoint{ navsystem->ProjectPointToNavigation(result.HitResult.Location, projectedlocation, FVector{ 500.0f }, (ANavigationData*)0, 0) };
+		if (navsystem)
+		{
+			b_pointhit = navsystem->ProjectPointToNavigation(result.HitResult.Location, projectedlocation, FVector{ 500.0f }, (ANavigationData*)0, FSharedConstNavQueryFilter{});
+		}
 		
-
-		//tracetelesuccess = b_hit && b_projectpoint;
+		//Trace teleport destionation is success or not
+		bool b_tracetelesuccess{ b_hit && b_pointhit };
+		//Nav mesh target location
+		FVector navmeshlocation{ projectedlocation };
+		//Trace location
+		FVector tracelocation{ result.HitResult.Location };
+		//Trace points
+		TArray<FVector> array_arcpoints;
 		for (const auto &eachpoint : result.PathData)
 		{
-			array_tracepoints.Emplace(eachpoint.Location);
+			array_arcpoints.Emplace(eachpoint.Location);
 		}
-		navmeshlocation = projectedlocation;
-		tracelocation = result.HitResult.Location;
-	}
 
-	b_isvalidteledestination = tracetelesuccess;
-	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("%d"), b_isvalidteledestination));
-	teleportcylinder->SetVisibility(b_isvalidteledestination, true);
+		b_isvalidteledestination = b_tracetelesuccess;
+		teleportcylinder->SetVisibility(b_isvalidteledestination, true);
 
-	TArray<TEnumAsByte<EObjectTypeQuery>> floorboundry;
-	floorboundry.Add(UEngineTypes::ConvertToObjectType(ECC_WorldStatic));
-	FHitResult outhit;
-	UKismetSystemLibrary::LineTraceSingleForObjects(this, navmeshlocation, FVector{ 0.0f, 0.0f, navmeshlocation.Z + -200.0f }, floorboundry, false, TArray<AActor*>(), EDrawDebugTrace::None, outhit, true);
+		//Trace down to find a valid location for players to stand at, original NavMesh location is offset upwards, so we must find the actual floor
+		TArray<TEnumAsByte<EObjectTypeQuery>> floorboundry;
+		floorboundry.Emplace(UEngineTypes::ConvertToObjectType(ECC_WorldStatic));
+		FHitResult outhit;
+		UKismetSystemLibrary::LineTraceSingleForObjects(GetWorld(), navmeshlocation, FVector{ 0.0f, 0.0f, navmeshlocation.Z + -200.0f }, floorboundry, false, TArray<AActor*>(), EDrawDebugTrace::None, outhit, true);
 
-	FVector newlocation{ outhit.bBlockingHit ? outhit.ImpactPoint : navmeshlocation };
-	teleportcylinder->SetWorldLocation(newlocation, false, nullptr, ETeleportType::TeleportPhysics);
+		FVector newlocation{ outhit.bBlockingHit ? outhit.ImpactPoint : navmeshlocation };
+		teleportcylinder->SetWorldLocation(newlocation, false, nullptr, ETeleportType::TeleportPhysics);
 
-	//Rumble controller when a valid teleport location is found
-	if ((b_isvalidteledestination && !b_isvalidpreviousframeteledestination) || (b_isvalidpreviousframeteledestination && !b_isvalidteledestination))
-	{
-		RumbleController(0.3);
-	}
-
-	b_isvalidpreviousframeteledestination = tracetelesuccess;
-
-	//Create small stub line when it fails to find a teleport location
-	if (!tracetelesuccess)
-	{
-		if (array_tracepoints.IsValidIndex(0))
+		//Rumble controller when a valid teleport location is found
+		if ((b_isvalidteledestination && !b_isvalidpreviousframeteledestination) || (b_isvalidpreviousframeteledestination && !b_isvalidteledestination))
 		{
-			array_tracepoints.Empty();
+			RumbleController(0.3);
 		}
-		array_tracepoints.Emplace(arcdirection->GetComponentLocation());
-		array_tracepoints.Emplace(arcdirection->GetComponentLocation() + (arcdirection->GetForwardVector() * 20.0f));
+
+		b_isvalidpreviousframeteledestination = b_tracetelesuccess;
+
+		//Create small stub line when it fails to find a teleport location
+		if (!b_tracetelesuccess)
+		{
+			array_arcpoints.Empty();
+			array_arcpoints.Emplace(arcdirection->GetComponentLocation());
+			array_arcpoints.Emplace(arcdirection->GetComponentLocation() + (arcdirection->GetForwardVector() * 20.0f));
+		}
+
+		//Build spline from all trace points, generates tangets to build a smoothly curved spline mesh
+		for (const auto &eachpoint : array_arcpoints)
+		{
+			arcspline->AddSplinePoint(eachpoint, ESplineCoordinateSpace::Local, true);
+		}
+		//Update the point type to create the curve
+		arcspline->SetSplinePointType(array_arcpoints.Num(), ESplinePointType::CurveClamped, true);
+		
+		//Update spline
+		for (int i{ 0 }; i < arcspline->GetNumberOfSplinePoints() - 2; i++)
+		{
+			USplineMeshComponent* splinemesh = NewObject<USplineMeshComponent>(arcspline);
+			splinemesh->RegisterComponentWithWorld(GetWorld());
+			splinemesh->SetMobility(EComponentMobility::Movable);
+			splinemesh->SetStaticMesh(mesh_beamspline);
+			UMaterialInstanceDynamic* dynamicMat = UMaterialInstanceDynamic::Create(mat_spline, NULL);
+			splinemesh->bCastDynamicShadow = false;
+			splinemesh->SetMaterial(0, dynamicMat);
+			array_splinemeshes.Emplace(splinemesh);
+
+			FVector pointlocationstart{ array_arcpoints[i] };
+			FVector pointtangentstart{ arcspline->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Local) };
+			FVector pointlocationend{ array_arcpoints[i + 1] };
+			FVector pointtangentend{ arcspline->GetTangentAtSplinePoint(i + 1, ESplineCoordinateSpace::Local) };
+			//Set tangents and position to slightly bend the cylinder, all cylinders combined create a smooth arc
+			splinemesh->SetStartAndEnd(pointlocationstart, pointtangentstart, pointlocationend, pointtangentend, true);
+		}
+		
+		arcendpoint->SetVisibility(b_tracetelesuccess && b_isteleactive, false);
+		arcendpoint->SetWorldLocation(tracelocation, false, nullptr, ETeleportType::TeleportPhysics);
+		FRotator HMDrotation{ 0.0f };
+		FVector HMDposition{ 0.0f };
+		UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(HMDrotation, HMDposition);
+		arrow->SetWorldRotation(UKismetMathLibrary::ComposeRotators(telerotation, FRotator{ 0.0f, HMDrotation.Yaw, 0.0f }));
+		roomscalemesh->SetWorldRotation(telerotation);
 	}
-
-	//Build spline from all trace points, generates tangets to build a smoothly curved spline mesh
-	for (const auto &eachdata : array_tracepoints)
-	{
-		arcspline->AddSplinePoint(eachdata, ESplineCoordinateSpace::Local, true);
-	}
-
-	//Update the point type to create the curve
-	arcspline->SetSplinePointType(array_tracepoints.Num(), ESplinePointType::CurveClamped, true);
-
-	for (int i{ 0 }; i < arcspline->GetNumberOfSplinePoints() - 2; ++i)
-	{
-
-		USplineMeshComponent* splinemesh = NewObject<USplineMeshComponent>(arcspline);
-
-		splinemesh->CreationMethod = EComponentCreationMethod::UserConstructionScript;
-		RegisterAllComponents();
-		splinemesh->SetMobility(EComponentMobility::Movable);
-		//splinemesh->SetupAttachment(arcspline);
-
-		UMaterialInstanceDynamic* dynamicMat = UMaterialInstanceDynamic::Create(mat_spline, NULL);
-		//dynamicMat->SetVectorParameterValue(TEXT("Color"), FLinearColor(mSegments[i].mColor));
-
-		splinemesh->bCastDynamicShadow = false;
-		splinemesh->SetStaticMesh(mesh_beamspline);
-		splinemesh->SetMaterial(0, dynamicMat);
-
-		//Width of the mesh 
-		//splinemesh->SetStartScale(FVector2D(50, 50));
-		//splinemesh->SetEndScale(FVector2D(50, 50));
-
-		array_splinemeshes.Emplace(splinemesh);
-
-		FVector pointlocationstart{ array_tracepoints[i] };
-		FVector pointtangentstart{ arcspline->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Local) };
-		FVector pointlocationend{ array_tracepoints[i+1] };
-		FVector pointtangentend{ arcspline->GetTangentAtSplinePoint(i+1, ESplineCoordinateSpace::Local) };
-
-		//Set tangents and position to slightly bend the cylinder, all cylinders combined create a smooth arc
-		splinemesh->SetStartAndEnd(pointlocationstart, pointtangentstart, pointlocationend, pointtangentend, true);
-	}
-
-	arcendpoint->SetVisibility(tracetelesuccess && b_isteleactive, false);
-	arcendpoint->SetWorldLocation(tracelocation, false, nullptr, ETeleportType::TeleportPhysics);
-	FRotator HMDrotation{ 0.0f };
-	FVector HMDposition{ 0.0f };
-	UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(HMDrotation, HMDposition);
-	arrow->SetWorldRotation(UKismetMathLibrary::ComposeRotators(telerotation, FRotator{ 0.0f, HMDrotation.Yaw, 0.0f }));
-	roomscalemesh->SetWorldRotation(telerotation);
 }
 
 //---Rumble controller on overlap with valid static mesh---//
@@ -465,3 +450,6 @@ FRotator AVRMotionController::GetTeleDestRot()
 {
 	return telerotation;
 }
+
+//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("%d"), b_isvalidteledestination));
+//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, TEXT("Back to normal"));

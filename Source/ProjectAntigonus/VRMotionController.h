@@ -49,6 +49,9 @@ private:
 	UPROPERTY()
 	UStaticMeshComponent* arcendpoint;
 
+	//UPROPERTY()
+	//TArray<FVector> array_arcpoints;
+
 	UPROPERTY()
 	TArray<class USplineMeshComponent*> array_splinemeshes;
 

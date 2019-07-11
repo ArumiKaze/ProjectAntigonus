@@ -142,30 +142,6 @@ void AVRCharacterPawn::SetupVROptions()
 		temphand = EControllerHand::Right;
 		righthand = GetWorld()->SpawnActor<AVRMotionController>(handcontroller, FVector{}, FRotator{}, spawnparams);
 		righthand->AttachToComponent(vrorigin, rules, FName(TEXT("")));
-
-		/*
-		//Left
-		AVRMotionController* left_deferredhand{ Cast<AVRMotionController>(UGameplayStatics::BeginDeferredActorSpawnFromClass(this, handcontroller, FTransform{}, ESpawnActorCollisionHandlingMethod::AlwaysSpawn, this)) };
-		if (left_deferredhand)
-		{
-			left_deferredhand->Init(EControllerHand::Left);
-			UGameplayStatics::FinishSpawningActor(left_deferredhand, FTransform{});
-			lefthand = left_deferredhand;
-			FAttachmentTransformRules rules{ EAttachmentRule::SnapToTarget, EAttachmentRule::SnapToTarget, EAttachmentRule::KeepWorld, false };
-			lefthand->AttachToComponent(vrorigin, rules, FName(TEXT("")));
-		}
-
-		//Right
-		AVRMotionController* right_deferredhand{ Cast<AVRMotionController>(UGameplayStatics::BeginDeferredActorSpawnFromClass(this, handcontroller, FTransform{}, ESpawnActorCollisionHandlingMethod::AlwaysSpawn, this)) };
-		if (right_deferredhand)
-		{
-			right_deferredhand->Init(EControllerHand::Right);
-			UGameplayStatics::FinishSpawningActor(right_deferredhand, FTransform{});
-			righthand = right_deferredhand;
-			FAttachmentTransformRules rules{ EAttachmentRule::SnapToTarget, EAttachmentRule::SnapToTarget, EAttachmentRule::KeepWorld, false };
-			righthand->AttachToComponent(vrorigin, rules, FName(TEXT("")));
-		}
-		*/
 	}
 }
 
@@ -178,7 +154,7 @@ void AVRCharacterPawn::HandleTeleportation(AVRMotionController *&controller)
 		{
 			b_isteleporting = true;
 			UGameplayStatics::GetPlayerCameraManager(GetWorld(), 0)->StartCameraFade(0.0f, 1.0f, camerafadeoutduration, cameratelefadecolor, false, true);
-			camerafadedelegate.BindUFunction(this, FName(TEXT("DelayTeleportation")), &controller);
+			camerafadedelegate.BindUFunction(this, FName(TEXT("DelayTeleportation")), controller);
 			GetWorldTimerManager().SetTimer(camerafadetimer, camerafadedelegate, camerafadeoutduration, false);
 		}
 		else
