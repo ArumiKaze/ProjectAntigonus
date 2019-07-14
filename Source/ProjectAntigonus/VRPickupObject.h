@@ -8,14 +8,10 @@ UCLASS()
 class PROJECTANTIGONUS_API AVRPickupObject : public AStaticMeshActor
 {
 	GENERATED_BODY()
-
-protected:
-
-	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	//UStaticMeshComponent* mesh;
 	
 public:
 
+	//---Constructor---//
 	AVRPickupObject();
 
 	//--- Pick up---//

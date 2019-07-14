@@ -11,46 +11,42 @@ class PROJECTANTIGONUS_API AVRCharacterPawn : public APawn
 
 private:
 
-	//---Axis Values---//
-	float mc_y_thumbleft;
-	float mc_x_thumbleft;
-	float mc_y_thumbright;
-	float mc_x_thumbright;
+	//---Desired hand---//
+	EControllerHand m_desiredhand;
 
 	//---Player Settings---//
-	float def_playerheight;
-	bool b_psvrcontrollerrollrotation;
+	float m_defplayerheight;
+	bool m_b_psvrcontrollerrollrotation;
 
-	//---Player State---//
-	bool b_isteleporting;
+	//---Load blueprint object---//
+	TSubclassOf<class AVRMotionController> m_handcontroller;
 
-	//---Teleport Camera Settings---//
-	float camerafadeoutduration;
-	float camerafadeinduration;
-	FLinearColor cameratelefadecolor;
-
-	//---Timers---//
-	FTimerDelegate camerafadedelegate;
-	FTimerHandle camerafadetimer;
-
-	EControllerHand temphand;
-
-	//---Blueprint Controllers---//
-	TSubclassOf<class AVRMotionController> handcontroller;
+	//---Hand controllers---//
 	UPROPERTY()
-	class AVRMotionController* lefthand;
+	class AVRMotionController* m_lefthand;
 	UPROPERTY()
-	class AVRMotionController* righthand;
+	class AVRMotionController* m_righthand;
 
-	//---Setup---//
+	//---Controller Input Axis Values---//
+	float m_leftthumb_y;
+	float m_leftthumb_x;
+	float m_rightthumb_y;
+	float m_rightthumb_x;
+
+
+
+
+
+	//---Set up player height and both controllers---//
 	void SetupVROptions();
 
-	//---Handle Teleportation---//
-	void HandleTeleportation(AVRMotionController *&controller);
-	UFUNCTION()
-	void DelayTeleportation(AVRMotionController *&delaycontroller);
+	//---Controller Input Axis Functions---//
+	void LeftYThumb(float value);
+	void LeftXThumb(float value);
+	void RightYThumb(float value);
+	void RightXThumb(float value);
 
-	//---Motion Controller Input---//
+	//---Controller Input Actions---//
 	//Left grab
 	void GrabLeft_Pressed();
 	void GrabLeft_Released();
@@ -64,15 +60,31 @@ private:
 	void TeleportRight_Pressed();
 	void TeleportRight_Released();
 
-	FRotator GetRotationFromInput(float upaxis, float rightaxis, AVRMotionController *&vrcontroller);
+	//---Calculate teleport rotation---//
+	FRotator RotationFromInput(float upaxis, float rightaxis, AVRMotionController *&vrcontroller);
 
-	void GetLeftY(float value);
-	void GetLeftX(float value);
-	void GetRightY(float value);
-	void GetRightX(float value);
+	//////////////////////////////////////////////////////
+
+	//---Player State---//
+	bool b_isteleporting;
+
+	//---Teleport Camera Settings---//
+	float camerafadeoutduration;
+	float camerafadeinduration;
+	FLinearColor cameratelefadecolor;
+
+	//---Timers---//
+	FTimerDelegate camerafadedelegate;
+	FTimerHandle camerafadetimer;
+
+	//---Handle Teleportation---//
+	void HandleTeleportation(AVRMotionController *&controller);
+	UFUNCTION()
+	void DelayTeleportation(AVRMotionController *&delaycontroller);
 
 protected:
 
+	//---Begin Play---//
 	virtual void BeginPlay() override;
 
 	//---Components---//
@@ -83,11 +95,15 @@ protected:
 
 public:
 
+	//---Contructor---//
 	AVRCharacterPawn();
 
+	//---Tick---//
 	virtual void Tick(float DeltaTime) override;
 
+	//---Player Input Component---//
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
-	EControllerHand GetPawnHand();
+	//---Getter---//
+	EControllerHand GetPawnHand();	//Get desired hand, left or right, for hand creation
 };

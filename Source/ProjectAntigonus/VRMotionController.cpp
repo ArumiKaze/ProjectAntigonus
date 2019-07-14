@@ -21,6 +21,26 @@
 
 AVRMotionController::AVRMotionController()
 {
+	PrimaryActorTick.bCanEverTick = true;
+
+	//---Left or Right hand---//
+	AVRCharacterPawn* pawnref{ Cast<AVRCharacterPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0)) };
+	if (pawnref)
+	{
+		m_hand = pawnref->GetPawnHand();
+	}
+
+	//---Teleporter conditionals---//
+	m_b_isteleactive = false;
+
+	//---Teleport Rotation---//
+	m_telerotation = FRotator{ 0.0f };
+
+	//---Wrist-based orientation rotation value---//
+	m_initialcontrollerrotation = FRotator{ 0.0f };
+
+	/////////////////////////////////////////////////////////////////
+
 	telelaunchvelocity = 900.0f;
 
 	//Attached actor object
@@ -33,25 +53,10 @@ AVRMotionController::AVRMotionController()
 
 	b_shouldgrip = false;
 
-	b_isteleactive = false;
 	b_isvalidteledestination = false;
 	b_isvalidpreviousframeteledestination = false;
 
-	PrimaryActorTick.bCanEverTick = true;
-
-	telerotation = FRotator{ 0.0f };
-
-	initialcontrollerrotation = FRotator{ 0.0f };
-
 	scene = CreateDefaultSubobject<USceneComponent>(TEXT("Scene"));
-
-	//Load hand
-
-	AVRCharacterPawn* pawnref{ Cast<AVRCharacterPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0)) };
-	if (pawnref)
-	{
-		m_hand = pawnref->GetPawnHand();
-	}
 
 	motioncontroller = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("MotionController"));
 	motioncontroller->SetupAttachment(scene);
@@ -106,7 +111,7 @@ AVRMotionController::AVRMotionController()
 void AVRMotionController::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
 	SetupRoomScaleOutline();
 
 	//Hide teleport cylinder until activation
@@ -202,7 +207,7 @@ void AVRMotionController::UpdateRoomScaleOutline()
 		FRotator hmdorientation{ 0.0f };
 		FVector hmdposition{ 0.0f };
 		UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(hmdorientation, hmdposition);
-		
+
 		FVector teleporttarget{ UKismetMathLibrary::Quat_UnrotateVector(FRotator{ 0.0f, hmdorientation.Yaw, 0.0f }.Quaternion() , FVector{ hmdposition.X, hmdposition.Y, 0.0f } / -1.0f) };
 		roomscalemesh->SetRelativeLocation(teleporttarget, false, false);
 	}
@@ -225,7 +230,7 @@ AActor*& AVRMotionController::GetActorNearHand(AActor *&actor)
 	{
 		//!!!!!!!!!!!!!!!!!! implement some kind of check to filter actors that are interactible
 		float tempoverlap{ (eachactor->GetActorLocation() - grabsphere->GetComponentLocation()).Size() };
-		if ( tempoverlap < nearestoverlap)
+		if (tempoverlap < nearestoverlap)
 		{
 			actor = eachactor;
 			nearestoverlap = tempoverlap;
@@ -251,7 +256,7 @@ void AVRMotionController::HandleTeleportationArc()
 	}
 	arcspline->ClearSplinePoints(true);
 
-	if (b_isteleactive)
+	if (m_b_isteleactive)
 	{
 		FPredictProjectilePathParams params;
 		params.StartLocation = FVector{ arcdirection->GetComponentLocation() };
@@ -274,7 +279,7 @@ void AVRMotionController::HandleTeleportationArc()
 		{
 			b_pointhit = navsystem->ProjectPointToNavigation(result.HitResult.Location, projectedlocation, FVector{ 500.0f }, (ANavigationData*)0, FSharedConstNavQueryFilter{});
 		}
-		
+
 		//Trace teleport destionation is success or not
 		bool b_tracetelesuccess{ b_hit && b_pointhit };
 		//Nav mesh target location
@@ -323,7 +328,7 @@ void AVRMotionController::HandleTeleportationArc()
 		}
 		//Update the point type to create the curve
 		arcspline->SetSplinePointType(array_arcpoints.Num(), ESplinePointType::CurveClamped, true);
-		
+
 		//Update spline
 		for (int i{ 0 }; i < arcspline->GetNumberOfSplinePoints() - 2; i++)
 		{
@@ -343,14 +348,14 @@ void AVRMotionController::HandleTeleportationArc()
 			//Set tangents and position to slightly bend the cylinder, all cylinders combined create a smooth arc
 			splinemesh->SetStartAndEnd(pointlocationstart, pointtangentstart, pointlocationend, pointtangentend, true);
 		}
-		
-		arcendpoint->SetVisibility(b_tracetelesuccess && b_isteleactive, false);
+
+		arcendpoint->SetVisibility(b_tracetelesuccess && m_b_isteleactive, false);
 		arcendpoint->SetWorldLocation(tracelocation, false, nullptr, ETeleportType::TeleportPhysics);
 		FRotator HMDrotation{ 0.0f };
 		FVector HMDposition{ 0.0f };
 		UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(HMDrotation, HMDposition);
-		arrow->SetWorldRotation(UKismetMathLibrary::ComposeRotators(telerotation, FRotator{ 0.0f, HMDrotation.Yaw, 0.0f }));
-		roomscalemesh->SetWorldRotation(telerotation);
+		arrow->SetWorldRotation(UKismetMathLibrary::ComposeRotators(m_telerotation, FRotator{ 0.0f, HMDrotation.Yaw, 0.0f }));
+		roomscalemesh->SetWorldRotation(m_telerotation);
 	}
 }
 
@@ -367,27 +372,21 @@ void AVRMotionController::ControllerMeshOnHit(UPrimitiveComponent* HitComponent,
 	RumbleController(UKismetMathLibrary::MapRangeClamped(NormalImpulse.Size(), 0.0f, 1500.0f, 0.0f, 0.8f));
 }
 
-//---Initialize hand---//
-void AVRMotionController::Init(EControllerHand p_hand)
-{
-	m_hand = p_hand;
-}
-
 //---Teleportation---//
 void AVRMotionController::ActivateTele()
 {
-	b_isteleactive = true;
+	m_b_isteleactive = true;
 	teleportcylinder->SetVisibility(true, true);
 	//Only show during teleport if room-scale is available
 	roomscalemesh->SetVisibility(b_isroomscale, false);
 	//Store rotation for later to compare roll value to support wrist-based orientation of the teleporter
-	initialcontrollerrotation = motioncontroller->GetComponentRotation();
+	m_initialcontrollerrotation = motioncontroller->GetComponentRotation();
 }
 void AVRMotionController::DisableTele()
 {
-	if (b_isteleactive)
+	if (m_b_isteleactive)
 	{
-		b_isteleactive = false;
+		m_b_isteleactive = false;
 		teleportcylinder->SetVisibility(false, true);
 		arcendpoint->SetVisibility(false, false);
 		roomscalemesh->SetVisibility(false, false);
@@ -424,13 +423,9 @@ void AVRMotionController::ReleaseActor()
 }
 
 //---Getter---//
-void AVRMotionController::SetTeleRotation(FRotator newrot)
-{
-	telerotation = newrot;
-}
 bool AVRMotionController::GetIsTeleActive()
 {
-	return b_isteleactive;
+	return m_b_isteleactive;
 }
 bool AVRMotionController::GetIsValidTeleDest()
 {
@@ -442,13 +437,27 @@ FVector AVRMotionController::GetTeleDestLoc()
 	FRotator ori{ 0.0f };
 	UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(ori, pos);
 
-	UKismetMathLibrary::Quat_RotateVector(telerotation.Quaternion(), FVector{ pos.X, pos.Y, 0.0f });
+	UKismetMathLibrary::Quat_RotateVector(m_telerotation.Quaternion(), FVector{ pos.X, pos.Y, 0.0f });
 
-	return FVector{ teleportcylinder->GetComponentLocation() - UKismetMathLibrary::Quat_RotateVector(telerotation.Quaternion(), FVector{ pos.X, pos.Y, 0.0f }) };
+	return FVector{ teleportcylinder->GetComponentLocation() - UKismetMathLibrary::Quat_RotateVector(m_telerotation.Quaternion(), FVector{ pos.X, pos.Y, 0.0f }) };
 }
 FRotator AVRMotionController::GetTeleDestRot()
 {
-	return telerotation;
+	return m_telerotation;
+}
+FRotator AVRMotionController::GetInitControllerRot()
+{
+	return m_initialcontrollerrotation;
+}
+UMotionControllerComponent& AVRMotionController::GetMotionControllerComponent()
+{
+	return *motioncontroller;
+}
+
+//---Setter---//
+void AVRMotionController::SetTeleRotation(FRotator newrot)
+{
+	m_telerotation = newrot;
 }
 
 //GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("%d"), b_isvalidteledestination));

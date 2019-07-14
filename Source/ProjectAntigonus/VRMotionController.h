@@ -19,7 +19,19 @@ class PROJECTANTIGONUS_API AVRMotionController : public AActor
 
 private:
 
+	//---Left or Right hand---//
 	EControllerHand m_hand;
+
+	//---Teleporter conditionals---//
+	bool m_b_isteleactive;
+
+	//---Teleport Rotation---//
+	FRotator m_telerotation;
+
+	//---Wrist-based orientation rotation value---//
+	FRotator m_initialcontrollerrotation;
+
+	////////////////////////////////////////////////////////
 
 	float telelaunchvelocity;
 
@@ -27,13 +39,8 @@ private:
 
 	bool b_shouldgrip;
 
-	bool b_isteleactive;
 	bool b_isvalidteledestination;
 	bool b_isvalidpreviousframeteledestination;
-
-	FRotator telerotation;
-
-	FRotator initialcontrollerrotation;
 
 	UPROPERTY()
 	UHapticFeedbackEffect_Base *haptic_motioncontroller;
@@ -48,9 +55,6 @@ private:
 
 	UPROPERTY()
 	UStaticMeshComponent* arcendpoint;
-
-	//UPROPERTY()
-	//TArray<FVector> array_arcpoints;
 
 	UPROPERTY()
 	TArray<class USplineMeshComponent*> array_splinemeshes;
@@ -108,16 +112,16 @@ protected:
 	UPROPERTY(BlueprintReadOnly)
 	E_GRIPSTATE gripstate;
 
+	//---Begin Play---//
 	virtual void BeginPlay() override;
 
-public:	
+public:
 
+	//---Constructor---//
 	AVRMotionController();
 
+	//---Tick---//
 	virtual void Tick(float DeltaTime) override;
-
-	//---Initialize hand---//
-	void Init(EControllerHand p_hand);
 
 	//---Teleportation---//
 	void ActivateTele();
@@ -128,9 +132,13 @@ public:
 	void ReleaseActor();
 
 	//---Getter---//
-	void SetTeleRotation(FRotator newrot);
 	bool GetIsTeleActive();
 	bool GetIsValidTeleDest();
 	FVector GetTeleDestLoc();
 	FRotator GetTeleDestRot();
+	FRotator GetInitControllerRot();
+	class UMotionControllerComponent& GetMotionControllerComponent();
+
+	//---Setter--//
+	void SetTeleRotation(FRotator newrot);
 };
