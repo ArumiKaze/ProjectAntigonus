@@ -18,6 +18,9 @@ private:
 	float m_defplayerheight;
 	bool m_b_psvrcontrollerrollrotation;
 
+	//---Player State---//
+	bool m_b_isteleporting;
+
 	//---Load blueprint object---//
 	TSubclassOf<class AVRMotionController> m_handcontroller;
 
@@ -32,6 +35,14 @@ private:
 	float m_leftthumb_x;
 	float m_rightthumb_y;
 	float m_rightthumb_x;
+
+	//---Teleport Camera Settings---//
+	float m_camerafadeoutduration;
+	float m_camerafadeinduration;
+	FLinearColor m_cameratelefadecolor;
+
+	//---Timers---//
+	FTimerHandle timerhandle_camerafade;
 
 
 
@@ -63,24 +74,10 @@ private:
 	//---Calculate teleport rotation---//
 	FRotator RotationFromInput(float upaxis, float rightaxis, AVRMotionController *&vrcontroller);
 
-	//////////////////////////////////////////////////////
-
-	//---Player State---//
-	bool b_isteleporting;
-
-	//---Teleport Camera Settings---//
-	float camerafadeoutduration;
-	float camerafadeinduration;
-	FLinearColor cameratelefadecolor;
-
-	//---Timers---//
-	FTimerDelegate camerafadedelegate;
-	FTimerHandle camerafadetimer;
-
 	//---Handle Teleportation---//
-	void HandleTeleportation(AVRMotionController *&controller);
+	void HandleTeleportation(AVRMotionController*& controller);
 	UFUNCTION()
-	void DelayTeleportation(AVRMotionController *&delaycontroller);
+	void DelayTeleportation(AVRMotionController*& delaycontroller);
 
 protected:
 

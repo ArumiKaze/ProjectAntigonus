@@ -40,21 +40,19 @@ AVRCharacterPawn::AVRCharacterPawn()
 	m_defplayerheight = 180.0f;
 	m_b_psvrcontrollerrollrotation = false;
 
+	//---Player State---//
+	m_b_isteleporting = false;
+
 	//---Controller Input Axis Values---//
 	m_leftthumb_y = 0.0f;
 	m_leftthumb_x = 0.0f;
 	m_rightthumb_y = 0.0f;
 	m_rightthumb_x = 0.0f;
 
-	///////////////////////////////////////////////////////////////////////////
-
-	//---Player State---//
-	b_isteleporting = false;
-
 	//---Teleport Camera Settings---//
-	camerafadeoutduration = 0.1f;
-	camerafadeinduration = 0.2;
-	cameratelefadecolor = FLinearColor{ 0.0f, 0.0f, 0.0f, 1.0f };
+	m_camerafadeoutduration = 0.1f;
+	m_camerafadeinduration = 0.2;
+	m_cameratelefadecolor = FLinearColor{ 0.0f, 0.0f, 0.0f, 1.0f };
 }
 
 //---Begin Play---//
@@ -168,27 +166,39 @@ void AVRCharacterPawn::GrabRight_Released()
 //Left teleport
 void AVRCharacterPawn::TeleportLeft_Pressed()
 {
-	m_lefthand->ActivateTele();
-	m_righthand->DisableTele();
+	if (m_lefthand && m_righthand)
+	{
+		m_lefthand->ActivateTele();
+		m_righthand->DisableTele();
+	}
 }
 void AVRCharacterPawn::TeleportLeft_Released()
 {
-	if (m_lefthand->GetIsTeleActive())
+	if (m_lefthand)
 	{
-		HandleTeleportation(m_lefthand);
+		if (m_lefthand->GetIsTeleActive())
+		{
+			HandleTeleportation(m_lefthand);
+		}
 	}
 }
 //Right teleport
 void AVRCharacterPawn::TeleportRight_Pressed()
 {
-	m_righthand->ActivateTele();
-	m_lefthand->DisableTele();
+	if (m_righthand && m_lefthand)
+	{
+		m_righthand->ActivateTele();
+		m_lefthand->DisableTele();
+	}
 }
 void AVRCharacterPawn::TeleportRight_Released()
 {
-	if (m_righthand->GetIsTeleActive())
+	if (m_righthand)
 	{
-		HandleTeleportation(m_righthand);
+		if (m_righthand->GetIsTeleActive())
+		{
+			HandleTeleportation(m_righthand);
+		}
 	}
 }
 
@@ -265,14 +275,15 @@ FRotator AVRCharacterPawn::RotationFromInput(float upaxis, float rightaxis, AVRM
 //---Handle Teleportation---//
 void AVRCharacterPawn::HandleTeleportation(AVRMotionController *&controller)
 {
-	if (!b_isteleporting)
+	if (!m_b_isteleporting)
 	{
 		if (controller->GetIsValidTeleDest())
 		{
-			b_isteleporting = true;
-			UGameplayStatics::GetPlayerCameraManager(GetWorld(), 0)->StartCameraFade(0.0f, 1.0f, camerafadeoutduration, cameratelefadecolor, false, true);
-			camerafadedelegate.BindUFunction(this, FName(TEXT("DelayTeleportation")), controller);
-			GetWorldTimerManager().SetTimer(camerafadetimer, camerafadedelegate, camerafadeoutduration, false);
+			m_b_isteleporting = true;
+			UGameplayStatics::GetPlayerCameraManager(GetWorld(), 0)->StartCameraFade(0.0f, 1.0f, m_camerafadeoutduration, m_cameratelefadecolor, false, true);
+			FTimerDelegate timerdelegate_camerafade;
+			timerdelegate_camerafade.BindUFunction(this, FName(TEXT("DelayTeleportation")), controller);
+			GetWorldTimerManager().SetTimer(timerhandle_camerafade, timerdelegate_camerafade, m_camerafadeoutduration, false);
 		}
 		else
 		{
@@ -284,8 +295,8 @@ void AVRCharacterPawn::DelayTeleportation(AVRMotionController *&delaycontroller)
 {
 	delaycontroller->DisableTele();
 	TeleportTo(delaycontroller->GetTeleDestLoc(), delaycontroller->GetTeleDestRot());
-	UGameplayStatics::GetPlayerCameraManager(GetWorld(), 0)->StartCameraFade(1.0f, 0.0f, camerafadeinduration, cameratelefadecolor, false, false);
-	b_isteleporting = false;
+	UGameplayStatics::GetPlayerCameraManager(GetWorld(), 0)->StartCameraFade(1.0f, 0.0f, m_camerafadeinduration, m_cameratelefadecolor, false, false);
+	m_b_isteleporting = false;
 }
 
 //---Getter---//

@@ -19,11 +19,22 @@ class PROJECTANTIGONUS_API AVRMotionController : public AActor
 
 private:
 
+	//---Room scale conditional---//
+	bool m_b_isroomscale;
+
 	//---Left or Right hand---//
 	EControllerHand m_hand;
+	
+	//---Grip hand conditional---//
+	bool m_b_shouldgrip;
+
+	//---Controller Rumble Float Curve---//
+	UPROPERTY()
+	UHapticFeedbackEffect_Base* m_hapticbase_motioncontroller;
 
 	//---Teleporter conditionals---//
 	bool m_b_isteleactive;
+	bool m_b_isvalidteledestination;
 
 	//---Teleport Rotation---//
 	FRotator m_telerotation;
@@ -31,22 +42,26 @@ private:
 	//---Wrist-based orientation rotation value---//
 	FRotator m_initialcontrollerrotation;
 
+	//---Actor that is attached to hand---//
+	UPROPERTY()
+	class AVRPickupObject* m_attachedactor;
+
+
+
+	//---Room Scale---//
+	void SetupRoomScaleOutline();
+
+	//---Controller rumble---//
+	void RumbleController(float intensity);
+
+	//---Grabbing---//
+	void GetActorNearHand(AActor*& actor);
+
 	////////////////////////////////////////////////////////
 
 	float telelaunchvelocity;
 
-	bool b_isroomscale;
-
-	bool b_shouldgrip;
-
-	bool b_isvalidteledestination;
 	bool b_isvalidpreviousframeteledestination;
-
-	UPROPERTY()
-	UHapticFeedbackEffect_Base *haptic_motioncontroller;
-
-	UPROPERTY()
-	class AVRPickupObject *attachedactor;
 
 	UPROPERTY()
 	UStaticMesh* mesh_beamspline;
@@ -59,16 +74,8 @@ private:
 	UPROPERTY()
 	TArray<class USplineMeshComponent*> array_splinemeshes;
 
-	//---Room scale set up---//
-	void SetupRoomScaleOutline();
+	//---Room Scale---//
 	void UpdateRoomScaleOutline();
-
-	//---Controller rumble---//
-	void RumbleController(float intensity);
-
-	//---Grabbing---//
-	UFUNCTION()
-	AActor*& GetActorNearHand(AActor *&actor);
 
 	//---Teleportation Arc---//
 	void HandleTeleportationArc();
@@ -78,6 +85,25 @@ private:
 	void ControllerMeshOnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
 
 protected:
+
+	//---SteamVRChaperone---//
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	class USteamVRChaperoneComponent* m_component_steamvrchaperone;
+
+	//---Teleport Cylinder---//
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UStaticMeshComponent* m_component_teleportcylinder;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UStaticMeshComponent* m_component_ring;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UStaticMeshComponent* m_component_arrow;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UStaticMeshComponent* m_component_roomscalemesh;
+
+	//---Begin Play---//
+	virtual void BeginPlay() override;
+
+	/////////////////////////////////////////////////////////////////////////////////////////////////
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	USceneComponent *scene;
@@ -94,38 +120,11 @@ protected:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	class USphereComponent *grabsphere;
 
-	//---Teleport Cylinder---//
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent *teleportcylinder;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent *ring;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent *arrow;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent *roomscalemesh;
-
-	//---SteamVRChaperone---//
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	class USteamVRChaperoneComponent *steamvrchaperone;
-
 	//---Grip Enum---//
 	UPROPERTY(BlueprintReadOnly)
 	E_GRIPSTATE gripstate;
 
-	//---Begin Play---//
-	virtual void BeginPlay() override;
-
 public:
-
-	//---Constructor---//
-	AVRMotionController();
-
-	//---Tick---//
-	virtual void Tick(float DeltaTime) override;
-
-	//---Teleportation---//
-	void ActivateTele();
-	void DisableTele();
 
 	//---Grab and Release Actors---//
 	void GrabActor();
@@ -141,4 +140,16 @@ public:
 
 	//---Setter--//
 	void SetTeleRotation(FRotator newrot);
+
+	///////////////////////////////////////////////////////////////////////////////
+
+	//---Constructor---//
+	AVRMotionController();
+
+	//---Tick---//
+	virtual void Tick(float DeltaTime) override;
+
+	//---Teleportation---//
+	void ActivateTele();
+	void DisableTele();
 };

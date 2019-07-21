@@ -8,7 +8,7 @@ AVRPickupObject::AVRPickupObject()
 }
 
 //--- Pick up---//
-void AVRPickupObject::Pickup(UMotionControllerComponent * parent)
+void AVRPickupObject::Pickup(UMotionControllerComponent *& parent)
 {
 	if (GetWorld() && parent && GetStaticMeshComponent())
 	{

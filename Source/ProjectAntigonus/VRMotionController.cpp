@@ -23,6 +23,9 @@ AVRMotionController::AVRMotionController()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
+	//---Room scale conditional---//
+	m_b_isroomscale = false;
+
 	//---Left or Right hand---//
 	AVRCharacterPawn* pawnref{ Cast<AVRCharacterPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0)) };
 	if (pawnref)
@@ -30,8 +33,18 @@ AVRMotionController::AVRMotionController()
 		m_hand = pawnref->GetPawnHand();
 	}
 
+	//---Grip hand conditional---//
+	m_b_shouldgrip = false;
+
+	//Load controller rumble float curve
+	static ConstructorHelpers::FObjectFinder<UHapticFeedbackEffect_Base> hapticcurve(TEXT("HapticFeedbackEffect_Curve'/Game/VirtualReality/Mannequin/Character/HapticCurve_MotionController.HapticCurve_MotionController'"));
+	if (hapticcurve.Object) {
+		m_hapticbase_motioncontroller = hapticcurve.Object;
+	}
+
 	//---Teleporter conditionals---//
 	m_b_isteleactive = false;
+	m_b_isvalidteledestination = false;
 
 	//---Teleport Rotation---//
 	m_telerotation = FRotator{ 0.0f };
@@ -39,21 +52,29 @@ AVRMotionController::AVRMotionController()
 	//---Wrist-based orientation rotation value---//
 	m_initialcontrollerrotation = FRotator{ 0.0f };
 
+	//---Actor that is attached to hand---//
+	m_attachedactor = nullptr;
+
+	//Load SteamVR Chaperone
+	m_component_steamvrchaperone = CreateDefaultSubobject<USteamVRChaperoneComponent>(TEXT("SteamVRChaperone"));
+
+	//Load Teleport Cylinder meshes
+	m_component_teleportcylinder = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TeleportCylinder"));
+	m_component_teleportcylinder->SetupAttachment(scene);
+	m_component_ring = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Ring"));
+	m_component_ring->SetupAttachment(m_component_teleportcylinder);
+	m_component_arrow = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Arrow"));
+	m_component_arrow->SetupAttachment(m_component_teleportcylinder);
+	m_component_roomscalemesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RoomScaleMesh"));
+	m_component_roomscalemesh->SetupAttachment(m_component_arrow);
+
 	/////////////////////////////////////////////////////////////////
 
 	telelaunchvelocity = 900.0f;
 
-	//Attached actor object
-	attachedactor = nullptr;
-
 	//Grip enum state
 	gripstate = E_GRIPSTATE::GRIP_OPEN;
 
-	b_isroomscale = false;
-
-	b_shouldgrip = false;
-
-	b_isvalidteledestination = false;
 	b_isvalidpreviousframeteledestination = false;
 
 	scene = CreateDefaultSubobject<USceneComponent>(TEXT("Scene"));
@@ -76,25 +97,6 @@ AVRMotionController::AVRMotionController()
 	arcendpoint = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArcEndPoint"));
 	arcendpoint->SetupAttachment(scene);
 
-	//Load Teleport Cylinder meshes and materials
-	teleportcylinder = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TeleportCylinder"));
-	teleportcylinder->SetupAttachment(scene);
-	ring = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Ring"));
-	ring->SetupAttachment(teleportcylinder);
-	arrow = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Arrow"));
-	arrow->SetupAttachment(teleportcylinder);
-	roomscalemesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RoomScaleMesh"));
-	roomscalemesh->SetupAttachment(arrow);
-
-	//Load SteamVR Chaperone
-	steamvrchaperone = CreateDefaultSubobject<USteamVRChaperoneComponent>(TEXT("SteamVRChaperone"));
-
-	//Load haptic feedback curve
-	static ConstructorHelpers::FObjectFinder<UHapticFeedbackEffect_Base> hapticcurve(TEXT("HapticFeedbackEffect_Curve'/Game/VirtualReality/Mannequin/Character/HapticCurve_MotionController.HapticCurve_MotionController'"));
-	if (hapticcurve.Object) {
-		haptic_motioncontroller = hapticcurve.Object;
-	}
-
 	//
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> beam(TEXT("StaticMesh'/Game/VirtualReality/Meshes/BeamMesh.BeamMesh'"));
@@ -107,16 +109,17 @@ AVRMotionController::AVRMotionController()
 	}
 }
 
-
+//---Begin Play---//
 void AVRMotionController::BeginPlay()
 {
 	Super::BeginPlay();
 
+	//Set up room scale
 	SetupRoomScaleOutline();
 
 	//Hide teleport cylinder until activation
-	teleportcylinder->SetVisibility(false, true);
-	roomscalemesh->SetVisibility(false, true);
+	m_component_teleportcylinder->SetVisibility(false, true);
+	m_component_roomscalemesh->SetVisibility(false, true);
 
 	//Invert scale on hand mesh to create left hand
 	if (m_hand == EControllerHand::Left)
@@ -138,20 +141,21 @@ void AVRMotionController::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	//Update animation of hand
-	if ((attachedactor != nullptr) || b_shouldgrip)
+	if (m_attachedactor || m_b_shouldgrip)
 	{
 		gripstate = E_GRIPSTATE::GRIP_GRAB;
 	}
 	else
 	{
 		AActor* tempactor{ nullptr };
-		if (GetActorNearHand(tempactor) != nullptr)
+		GetActorNearHand(tempactor);
+		if (tempactor)
 		{
 			gripstate = E_GRIPSTATE::GRIP_CANGRAB;
 		}
 		else
 		{
-			if (b_shouldgrip)
+			if (m_b_shouldgrip)
 			{
 				gripstate = E_GRIPSTATE::GRIP_GRAB;
 			}
@@ -181,46 +185,48 @@ void AVRMotionController::Tick(float DeltaTime)
 	}
 }
 
-//---Room scale set up---//
+//---Room Scale---//
+//Set up
 void AVRMotionController::SetupRoomScaleOutline()
 {
 	FVector OutRectCenter{ 0.0f };
 	FRotator OutRectRotation{ 0.0f };
 	float OutSideLengthX{ 0.0f };
 	float OutSideLengthY{ 0.0f };
-	UKismetMathLibrary::MinimumAreaRectangle(this, steamvrchaperone->GetBounds(), FVector(0.0f, 0.0f, 0.0f), OutRectCenter, OutRectRotation, OutSideLengthX, OutSideLengthY, false);
+	UKismetMathLibrary::MinimumAreaRectangle(this, m_component_steamvrchaperone->GetBounds(), FVector{ 0.0f, 0.0f, 0.0f }, OutRectCenter, OutRectRotation, OutSideLengthX, OutSideLengthY, false);
 
 	//Measure Chaperone, default to 100x100 if roomscale is not used
-	b_isroomscale = UKismetMathLibrary::BooleanNAND(UKismetMathLibrary::NearlyEqual_FloatFloat(OutSideLengthX, 100.0f, 0.01f), UKismetMathLibrary::NearlyEqual_FloatFloat(OutSideLengthY, 100.0f, 0.01f));
-	if (b_isroomscale)
+	m_b_isroomscale = UKismetMathLibrary::BooleanNAND(UKismetMathLibrary::NearlyEqual_FloatFloat(OutSideLengthX, 100.0f, 0.01f), UKismetMathLibrary::NearlyEqual_FloatFloat(OutSideLengthY, 100.0f, 0.01f));
+	if (m_b_isroomscale)
 	{
 		//Setup room-scale mesh (1x1x1 units in size by default) to the size of the room-scale dimensions
 		float chaperonemeshheight{ 70.0f };
-		roomscalemesh->SetWorldScale3D(FVector(OutSideLengthX, OutSideLengthY, chaperonemeshheight));
-		roomscalemesh->SetRelativeRotation(OutRectRotation);
+		m_component_roomscalemesh->SetWorldScale3D(FVector{ OutSideLengthX, OutSideLengthY, chaperonemeshheight });
+		m_component_roomscalemesh->SetRelativeRotation(OutRectRotation);
 	}
 }
+//Update
 void AVRMotionController::UpdateRoomScaleOutline()
 {
-	if (roomscalemesh->IsVisible())
+	if (m_component_roomscalemesh->IsVisible())
 	{
 		FRotator hmdorientation{ 0.0f };
 		FVector hmdposition{ 0.0f };
 		UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(hmdorientation, hmdposition);
 
 		FVector teleporttarget{ UKismetMathLibrary::Quat_UnrotateVector(FRotator{ 0.0f, hmdorientation.Yaw, 0.0f }.Quaternion() , FVector{ hmdposition.X, hmdposition.Y, 0.0f } / -1.0f) };
-		roomscalemesh->SetRelativeLocation(teleporttarget, false, false);
+		m_component_roomscalemesh->SetRelativeLocation(teleporttarget, false, false);
 	}
 }
 
 void AVRMotionController::RumbleController(float intensity)
 {
-	UGameplayStatics::GetPlayerController(GetWorld(), 0)->PlayHapticEffect(haptic_motioncontroller, m_hand, intensity, false);
+	UGameplayStatics::GetPlayerController(GetWorld(), 0)->PlayHapticEffect(m_hapticbase_motioncontroller, m_hand, intensity, false);
 }
 
 //---Grabbing---//
 //Get an actor near the hand
-AActor*& AVRMotionController::GetActorNearHand(AActor *&actor)
+void AVRMotionController::GetActorNearHand(AActor *&actor)
 {
 	float nearestoverlap{ 10000.0f };
 
@@ -236,7 +242,6 @@ AActor*& AVRMotionController::GetActorNearHand(AActor *&actor)
 			nearestoverlap = tempoverlap;
 		}
 	}
-	return actor;
 }
 
 //---Teleportation Arc---//
@@ -293,8 +298,8 @@ void AVRMotionController::HandleTeleportationArc()
 			array_arcpoints.Emplace(eachpoint.Location);
 		}
 
-		b_isvalidteledestination = b_tracetelesuccess;
-		teleportcylinder->SetVisibility(b_isvalidteledestination, true);
+		m_b_isvalidteledestination = b_tracetelesuccess;
+		m_component_teleportcylinder->SetVisibility(m_b_isvalidteledestination, true);
 
 		//Trace down to find a valid location for players to stand at, original NavMesh location is offset upwards, so we must find the actual floor
 		TArray<TEnumAsByte<EObjectTypeQuery>> floorboundry;
@@ -303,10 +308,10 @@ void AVRMotionController::HandleTeleportationArc()
 		UKismetSystemLibrary::LineTraceSingleForObjects(GetWorld(), navmeshlocation, FVector{ 0.0f, 0.0f, navmeshlocation.Z + -200.0f }, floorboundry, false, TArray<AActor*>(), EDrawDebugTrace::None, outhit, true);
 
 		FVector newlocation{ outhit.bBlockingHit ? outhit.ImpactPoint : navmeshlocation };
-		teleportcylinder->SetWorldLocation(newlocation, false, nullptr, ETeleportType::TeleportPhysics);
+		m_component_teleportcylinder->SetWorldLocation(newlocation, false, nullptr, ETeleportType::TeleportPhysics);
 
 		//Rumble controller when a valid teleport location is found
-		if ((b_isvalidteledestination && !b_isvalidpreviousframeteledestination) || (b_isvalidpreviousframeteledestination && !b_isvalidteledestination))
+		if ((m_b_isvalidteledestination && !b_isvalidpreviousframeteledestination) || (b_isvalidpreviousframeteledestination && !m_b_isvalidteledestination))
 		{
 			RumbleController(0.3);
 		}
@@ -354,8 +359,8 @@ void AVRMotionController::HandleTeleportationArc()
 		FRotator HMDrotation{ 0.0f };
 		FVector HMDposition{ 0.0f };
 		UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(HMDrotation, HMDposition);
-		arrow->SetWorldRotation(UKismetMathLibrary::ComposeRotators(m_telerotation, FRotator{ 0.0f, HMDrotation.Yaw, 0.0f }));
-		roomscalemesh->SetWorldRotation(m_telerotation);
+		m_component_arrow->SetWorldRotation(UKismetMathLibrary::ComposeRotators(m_telerotation, FRotator{ 0.0f, HMDrotation.Yaw, 0.0f }));
+		m_component_roomscalemesh->SetWorldRotation(m_telerotation);
 	}
 }
 
@@ -376,9 +381,9 @@ void AVRMotionController::ControllerMeshOnHit(UPrimitiveComponent* HitComponent,
 void AVRMotionController::ActivateTele()
 {
 	m_b_isteleactive = true;
-	teleportcylinder->SetVisibility(true, true);
+	m_component_teleportcylinder->SetVisibility(true, true);
 	//Only show during teleport if room-scale is available
-	roomscalemesh->SetVisibility(b_isroomscale, false);
+	m_component_roomscalemesh->SetVisibility(m_b_isroomscale, false);
 	//Store rotation for later to compare roll value to support wrist-based orientation of the teleporter
 	m_initialcontrollerrotation = motioncontroller->GetComponentRotation();
 }
@@ -387,38 +392,39 @@ void AVRMotionController::DisableTele()
 	if (m_b_isteleactive)
 	{
 		m_b_isteleactive = false;
-		teleportcylinder->SetVisibility(false, true);
+		m_component_teleportcylinder->SetVisibility(false, true);
 		arcendpoint->SetVisibility(false, false);
-		roomscalemesh->SetVisibility(false, false);
+		m_component_roomscalemesh->SetVisibility(false, false);
 	}
 }
 
 //---Grab and Release Actors---//
 void AVRMotionController::GrabActor()
 {
-	b_shouldgrip = true;
+	m_b_shouldgrip = true;
 	AActor* tempactor{ nullptr };
-	if (GetActorNearHand(tempactor))
+	GetActorNearHand(tempactor);
+	if (tempactor)
 	{
-		attachedactor = Cast<AVRPickupObject>(tempactor);
-		if (attachedactor)
+		m_attachedactor = Cast<AVRPickupObject>(tempactor);
+		if (m_attachedactor)
 		{
-			attachedactor->Pickup(motioncontroller);
+			m_attachedactor->Pickup(motioncontroller);
 			RumbleController(0.7f);
 		}
 	}
 }
 void AVRMotionController::ReleaseActor()
 {
-	b_shouldgrip = false;
-	if (attachedactor)
+	m_b_shouldgrip = false;
+	if (m_attachedactor)
 	{
-		if (attachedactor->GetRootComponent()->GetAttachParent() == motioncontroller)
+		if (m_attachedactor->GetRootComponent()->GetAttachParent() == motioncontroller)
 		{
-			attachedactor->Drop();
+			m_attachedactor->Drop();
 			RumbleController(0.2f);
 		}
-		attachedactor = nullptr;
+		m_attachedactor = nullptr;
 	}
 }
 
@@ -429,7 +435,7 @@ bool AVRMotionController::GetIsTeleActive()
 }
 bool AVRMotionController::GetIsValidTeleDest()
 {
-	return b_isvalidteledestination;
+	return m_b_isvalidteledestination;
 }
 FVector AVRMotionController::GetTeleDestLoc()
 {
@@ -437,9 +443,7 @@ FVector AVRMotionController::GetTeleDestLoc()
 	FRotator ori{ 0.0f };
 	UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(ori, pos);
 
-	UKismetMathLibrary::Quat_RotateVector(m_telerotation.Quaternion(), FVector{ pos.X, pos.Y, 0.0f });
-
-	return FVector{ teleportcylinder->GetComponentLocation() - UKismetMathLibrary::Quat_RotateVector(m_telerotation.Quaternion(), FVector{ pos.X, pos.Y, 0.0f }) };
+	return FVector{ m_component_teleportcylinder->GetComponentLocation() - UKismetMathLibrary::Quat_RotateVector(m_telerotation.Quaternion(), FVector{ pos.X, pos.Y, 0.0f }) };
 }
 FRotator AVRMotionController::GetTeleDestRot()
 {
