@@ -86,39 +86,39 @@ private:
 
 protected:
 
-	//---SteamVRChaperone---//
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	class USteamVRChaperoneComponent* m_component_steamvrchaperone;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	USceneComponent* m_component_scene;
+
+	//---Hand---//
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	class UMotionControllerComponent* m_component_motioncontroller;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	USkeletalMeshComponent* m_component_handmesh;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	class UArrowComponent* m_component_arcdirection;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	class USplineComponent* m_component_arcspline;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	class USphereComponent* m_component_grabsphere;
 
 	//---Teleport Cylinder---//
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* m_component_teleportcylinder;
+	UStaticMeshComponent *m_component_teleportcylinder;
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* m_component_ring;
+	UStaticMeshComponent *m_component_ring;
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* m_component_arrow;
+	UStaticMeshComponent *m_component_arrow;
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* m_component_roomscalemesh;
+	UStaticMeshComponent *m_component_roomscalemesh;
+
+	//---SteamVRChaperone---//
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	class USteamVRChaperoneComponent *m_component_steamvrchaperone;
 
 	//---Begin Play---//
 	virtual void BeginPlay() override;
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	USceneComponent *scene;
-
-	//---Hand---//
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	class UMotionControllerComponent *motioncontroller;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	USkeletalMeshComponent *handmesh;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	class UArrowComponent* arcdirection;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	class USplineComponent* arcspline;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	class USphereComponent *grabsphere;
 
 	//---Grip Enum---//
 	UPROPERTY(BlueprintReadOnly)

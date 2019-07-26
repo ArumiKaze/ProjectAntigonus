@@ -55,18 +55,34 @@ AVRMotionController::AVRMotionController()
 	//---Actor that is attached to hand---//
 	m_attachedactor = nullptr;
 
-	//Load SteamVR Chaperone
-	m_component_steamvrchaperone = CreateDefaultSubobject<USteamVRChaperoneComponent>(TEXT("SteamVRChaperone"));
+	m_component_scene = CreateDefaultSubobject<USceneComponent>(TEXT("Scene"));
+
+	//Load hand components
+	m_component_motioncontroller = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("MotionController"));
+	m_component_motioncontroller->SetupAttachment(m_component_scene);
+	m_component_handmesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("HandMesh"));
+	m_component_handmesh->SetupAttachment(m_component_motioncontroller);
+	m_component_arcdirection = CreateDefaultSubobject<UArrowComponent>(TEXT("ArcDirection"));
+	m_component_arcdirection->SetupAttachment(m_component_handmesh);
+	m_component_arcspline = CreateDefaultSubobject<USplineComponent>(TEXT("ArcSpline"));
+	m_component_arcspline->SetupAttachment(m_component_handmesh);
+	m_component_arcspline->SetMobility(EComponentMobility::Movable);
+	m_component_grabsphere = CreateDefaultSubobject<USphereComponent>(TEXT("GrabSphere"));
+	m_component_grabsphere->SetupAttachment(m_component_handmesh);
+	m_component_grabsphere->SetSphereRadius(10.0f);
 
 	//Load Teleport Cylinder meshes
 	m_component_teleportcylinder = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TeleportCylinder"));
-	m_component_teleportcylinder->SetupAttachment(scene);
+	m_component_teleportcylinder->SetupAttachment(m_component_scene);
 	m_component_ring = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Ring"));
 	m_component_ring->SetupAttachment(m_component_teleportcylinder);
 	m_component_arrow = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Arrow"));
 	m_component_arrow->SetupAttachment(m_component_teleportcylinder);
 	m_component_roomscalemesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RoomScaleMesh"));
 	m_component_roomscalemesh->SetupAttachment(m_component_arrow);
+
+	//Load SteamVR Chaperone
+	m_component_steamvrchaperone = CreateDefaultSubobject<USteamVRChaperoneComponent>(TEXT("SteamVRChaperone"));
 
 	/////////////////////////////////////////////////////////////////
 
@@ -77,25 +93,9 @@ AVRMotionController::AVRMotionController()
 
 	b_isvalidpreviousframeteledestination = false;
 
-	scene = CreateDefaultSubobject<USceneComponent>(TEXT("Scene"));
-
-	motioncontroller = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("MotionController"));
-	motioncontroller->SetupAttachment(scene);
-	//motioncontroller->SetTrackingSource(m_hand);
-	handmesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("HandMesh"));
-	handmesh->SetupAttachment(motioncontroller);
-	arcdirection = CreateDefaultSubobject<UArrowComponent>(TEXT("ArcDirection"));
-	arcdirection->SetupAttachment(handmesh);
-	arcspline = CreateDefaultSubobject<USplineComponent>(TEXT("ArcSpline"));
-	arcspline->SetupAttachment(handmesh);
-	arcspline->SetMobility(EComponentMobility::Movable);
-	grabsphere = CreateDefaultSubobject<USphereComponent>(TEXT("GrabSphere"));
-	grabsphere->SetupAttachment(handmesh);
-	grabsphere->SetSphereRadius(10.0f);
-
 	//Load arc end point
 	arcendpoint = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArcEndPoint"));
-	arcendpoint->SetupAttachment(scene);
+	arcendpoint->SetupAttachment(m_component_scene);
 
 	//
 
@@ -124,16 +124,16 @@ void AVRMotionController::BeginPlay()
 	//Invert scale on hand mesh to create left hand
 	if (m_hand == EControllerHand::Left)
 	{
-		motioncontroller->MotionSource = FXRMotionControllerBase::LeftHandSourceId;
-		handmesh->SetWorldScale3D(FVector(1.0f, 1.0f, -1.0f));
+		m_component_motioncontroller->MotionSource = FXRMotionControllerBase::LeftHandSourceId;
+		m_component_handmesh->SetWorldScale3D(FVector(1.0f, 1.0f, -1.0f));
 	}
 	else
 	{
-		motioncontroller->MotionSource = FXRMotionControllerBase::RightHandSourceId;
+		m_component_motioncontroller->MotionSource = FXRMotionControllerBase::RightHandSourceId;
 	}
 
-	grabsphere->OnComponentBeginOverlap.AddDynamic(this, &AVRMotionController::GrabSphereOnOverlap);
-	handmesh->OnComponentHit.AddDynamic(this, &AVRMotionController::ControllerMeshOnHit);
+	m_component_grabsphere->OnComponentBeginOverlap.AddDynamic(this, &AVRMotionController::GrabSphereOnOverlap);
+	m_component_handmesh->OnComponentHit.AddDynamic(this, &AVRMotionController::ControllerMeshOnHit);
 }
 
 void AVRMotionController::Tick(float DeltaTime)
@@ -177,10 +177,10 @@ void AVRMotionController::Tick(float DeltaTime)
 	{
 	case E_GRIPSTATE::GRIP_OPEN:
 	case E_GRIPSTATE::GRIP_CANGRAB:
-		handmesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		m_component_handmesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		break;
 	case E_GRIPSTATE::GRIP_GRAB:
-		handmesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		m_component_handmesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		break;
 	}
 }
@@ -231,11 +231,11 @@ void AVRMotionController::GetActorNearHand(AActor *&actor)
 	float nearestoverlap{ 10000.0f };
 
 	TArray <AActor*> actorarray;
-	grabsphere->GetOverlappingActors(actorarray, AActor::StaticClass());
+	m_component_grabsphere->GetOverlappingActors(actorarray, AActor::StaticClass());
 	for (const auto &eachactor : actorarray)
 	{
 		//!!!!!!!!!!!!!!!!!! implement some kind of check to filter actors that are interactible
-		float tempoverlap{ (eachactor->GetActorLocation() - grabsphere->GetComponentLocation()).Size() };
+		float tempoverlap{ (eachactor->GetActorLocation() - m_component_grabsphere->GetComponentLocation()).Size() };
 		if (tempoverlap < nearestoverlap)
 		{
 			actor = eachactor;
@@ -259,13 +259,13 @@ void AVRMotionController::HandleTeleportationArc()
 		}
 		array_splinemeshes.Empty();
 	}
-	arcspline->ClearSplinePoints(true);
+	m_component_arcspline->ClearSplinePoints(true);
 
 	if (m_b_isteleactive)
 	{
 		FPredictProjectilePathParams params;
-		params.StartLocation = FVector{ arcdirection->GetComponentLocation() };
-		params.LaunchVelocity = FVector{ arcdirection->GetForwardVector() * telelaunchvelocity };
+		params.StartLocation = FVector{ m_component_arcdirection->GetComponentLocation() };
+		params.LaunchVelocity = FVector{ m_component_arcdirection->GetForwardVector() * telelaunchvelocity };
 		params.bTraceWithCollision = true;
 		params.ProjectileRadius = 0.0f;
 		TArray<TEnumAsByte<EObjectTypeQuery>> teleboundry;
@@ -322,22 +322,22 @@ void AVRMotionController::HandleTeleportationArc()
 		if (!b_tracetelesuccess)
 		{
 			array_arcpoints.Empty();
-			array_arcpoints.Emplace(arcdirection->GetComponentLocation());
-			array_arcpoints.Emplace(arcdirection->GetComponentLocation() + (arcdirection->GetForwardVector() * 20.0f));
+			array_arcpoints.Emplace(m_component_arcdirection->GetComponentLocation());
+			array_arcpoints.Emplace(m_component_arcdirection->GetComponentLocation() + (m_component_arcdirection->GetForwardVector() * 20.0f));
 		}
 
 		//Build spline from all trace points, generates tangets to build a smoothly curved spline mesh
 		for (const auto &eachpoint : array_arcpoints)
 		{
-			arcspline->AddSplinePoint(eachpoint, ESplineCoordinateSpace::Local, true);
+			m_component_arcspline->AddSplinePoint(eachpoint, ESplineCoordinateSpace::Local, true);
 		}
 		//Update the point type to create the curve
-		arcspline->SetSplinePointType(array_arcpoints.Num(), ESplinePointType::CurveClamped, true);
+		m_component_arcspline->SetSplinePointType(array_arcpoints.Num(), ESplinePointType::CurveClamped, true);
 
 		//Update spline
-		for (int i{ 0 }; i < arcspline->GetNumberOfSplinePoints() - 2; i++)
+		for (int i{ 0 }; i < m_component_arcspline->GetNumberOfSplinePoints() - 2; i++)
 		{
-			USplineMeshComponent* splinemesh = NewObject<USplineMeshComponent>(arcspline);
+			USplineMeshComponent* splinemesh = NewObject<USplineMeshComponent>(m_component_arcspline);
 			splinemesh->RegisterComponentWithWorld(GetWorld());
 			splinemesh->SetMobility(EComponentMobility::Movable);
 			splinemesh->SetStaticMesh(mesh_beamspline);
@@ -347,9 +347,9 @@ void AVRMotionController::HandleTeleportationArc()
 			array_splinemeshes.Emplace(splinemesh);
 
 			FVector pointlocationstart{ array_arcpoints[i] };
-			FVector pointtangentstart{ arcspline->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Local) };
+			FVector pointtangentstart{ m_component_arcspline->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Local) };
 			FVector pointlocationend{ array_arcpoints[i + 1] };
-			FVector pointtangentend{ arcspline->GetTangentAtSplinePoint(i + 1, ESplineCoordinateSpace::Local) };
+			FVector pointtangentend{ m_component_arcspline->GetTangentAtSplinePoint(i + 1, ESplineCoordinateSpace::Local) };
 			//Set tangents and position to slightly bend the cylinder, all cylinders combined create a smooth arc
 			splinemesh->SetStartAndEnd(pointlocationstart, pointtangentstart, pointlocationend, pointtangentend, true);
 		}
@@ -385,7 +385,7 @@ void AVRMotionController::ActivateTele()
 	//Only show during teleport if room-scale is available
 	m_component_roomscalemesh->SetVisibility(m_b_isroomscale, false);
 	//Store rotation for later to compare roll value to support wrist-based orientation of the teleporter
-	m_initialcontrollerrotation = motioncontroller->GetComponentRotation();
+	m_initialcontrollerrotation = m_component_motioncontroller->GetComponentRotation();
 }
 void AVRMotionController::DisableTele()
 {
@@ -409,7 +409,7 @@ void AVRMotionController::GrabActor()
 		m_attachedactor = Cast<AVRPickupObject>(tempactor);
 		if (m_attachedactor)
 		{
-			m_attachedactor->Pickup(motioncontroller);
+			m_attachedactor->Pickup(m_component_motioncontroller);
 			RumbleController(0.7f);
 		}
 	}
@@ -419,7 +419,7 @@ void AVRMotionController::ReleaseActor()
 	m_b_shouldgrip = false;
 	if (m_attachedactor)
 	{
-		if (m_attachedactor->GetRootComponent()->GetAttachParent() == motioncontroller)
+		if (m_attachedactor->GetRootComponent()->GetAttachParent() == m_component_motioncontroller)
 		{
 			m_attachedactor->Drop();
 			RumbleController(0.2f);
@@ -455,7 +455,7 @@ FRotator AVRMotionController::GetInitControllerRot()
 }
 UMotionControllerComponent& AVRMotionController::GetMotionControllerComponent()
 {
-	return *motioncontroller;
+	return *m_component_motioncontroller;
 }
 
 //---Setter---//
