@@ -33,6 +33,9 @@ AVRMotionController::AVRMotionController()
 		m_hand = pawnref->GetPawnHand();
 	}
 
+	//Grip enum state
+	m_enum_gripstate = E_GRIPSTATE::GRIP_OPEN;
+
 	//---Grip hand conditional---//
 	m_b_shouldgrip = false;
 
@@ -45,6 +48,7 @@ AVRMotionController::AVRMotionController()
 	//---Teleporter conditionals---//
 	m_b_isteleactive = false;
 	m_b_isvalidteledestination = false;
+	m_b_isvalidpreviousframeteledestination = false;
 
 	//---Teleport Rotation---//
 	m_telerotation = FRotator{ 0.0f };
@@ -54,6 +58,19 @@ AVRMotionController::AVRMotionController()
 
 	//---Actor that is attached to hand---//
 	m_attachedactor = nullptr;
+
+	//---Speed of tele arc launch velocity---//
+	m_telelaunchvelocity = 900.0f;
+
+	//---Load beam spline mesh and mat---//
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> beam(TEXT("StaticMesh'/Game/VirtualReality/Meshes/BeamMesh.BeamMesh'"));
+	if (beam.Object) {
+		m_mesh_beamspline = beam.Object;
+	}
+	static ConstructorHelpers::FObjectFinder<UMaterial> spline(TEXT("Material'/Game/VirtualReality/Materials/M_SplineArcMat.M_SplineArcMat'"));
+	if (spline.Object) {
+		m_mat_spline = spline.Object;
+	}
 
 	m_component_scene = CreateDefaultSubobject<USceneComponent>(TEXT("Scene"));
 
@@ -71,6 +88,10 @@ AVRMotionController::AVRMotionController()
 	m_component_grabsphere->SetupAttachment(m_component_handmesh);
 	m_component_grabsphere->SetSphereRadius(10.0f);
 
+	//Load arc end point
+	m_component_arcendpoint = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArcEndPoint"));
+	m_component_arcendpoint->SetupAttachment(m_component_scene);
+
 	//Load Teleport Cylinder meshes
 	m_component_teleportcylinder = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TeleportCylinder"));
 	m_component_teleportcylinder->SetupAttachment(m_component_scene);
@@ -83,30 +104,6 @@ AVRMotionController::AVRMotionController()
 
 	//Load SteamVR Chaperone
 	m_component_steamvrchaperone = CreateDefaultSubobject<USteamVRChaperoneComponent>(TEXT("SteamVRChaperone"));
-
-	/////////////////////////////////////////////////////////////////
-
-	telelaunchvelocity = 900.0f;
-
-	//Grip enum state
-	gripstate = E_GRIPSTATE::GRIP_OPEN;
-
-	b_isvalidpreviousframeteledestination = false;
-
-	//Load arc end point
-	arcendpoint = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ArcEndPoint"));
-	arcendpoint->SetupAttachment(m_component_scene);
-
-	//
-
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> beam(TEXT("StaticMesh'/Game/VirtualReality/Meshes/BeamMesh.BeamMesh'"));
-	if (beam.Object) {
-		mesh_beamspline = beam.Object;
-	}
-	static ConstructorHelpers::FObjectFinder<UMaterial> spline(TEXT("Material'/Game/VirtualReality/Materials/M_SplineArcMat.M_SplineArcMat'"));
-	if (spline.Object) {
-		mat_spline = spline.Object;
-	}
 }
 
 //---Begin Play---//
@@ -143,7 +140,7 @@ void AVRMotionController::Tick(float DeltaTime)
 	//Update animation of hand
 	if (m_attachedactor || m_b_shouldgrip)
 	{
-		gripstate = E_GRIPSTATE::GRIP_GRAB;
+		m_enum_gripstate = E_GRIPSTATE::GRIP_GRAB;
 	}
 	else
 	{
@@ -151,17 +148,17 @@ void AVRMotionController::Tick(float DeltaTime)
 		GetActorNearHand(tempactor);
 		if (tempactor)
 		{
-			gripstate = E_GRIPSTATE::GRIP_CANGRAB;
+			m_enum_gripstate = E_GRIPSTATE::GRIP_CANGRAB;
 		}
 		else
 		{
 			if (m_b_shouldgrip)
 			{
-				gripstate = E_GRIPSTATE::GRIP_GRAB;
+				m_enum_gripstate = E_GRIPSTATE::GRIP_GRAB;
 			}
 			else
 			{
-				gripstate = E_GRIPSTATE::GRIP_OPEN;
+				m_enum_gripstate = E_GRIPSTATE::GRIP_OPEN;
 			}
 		}
 	}
@@ -173,7 +170,7 @@ void AVRMotionController::Tick(float DeltaTime)
 	UpdateRoomScaleOutline();
 
 	//Only let hand collide with environment while gripping
-	switch (gripstate)
+	switch (m_enum_gripstate)
 	{
 	case E_GRIPSTATE::GRIP_OPEN:
 	case E_GRIPSTATE::GRIP_CANGRAB:
@@ -219,6 +216,7 @@ void AVRMotionController::UpdateRoomScaleOutline()
 	}
 }
 
+//---Controller rumble---//
 void AVRMotionController::RumbleController(float intensity)
 {
 	UGameplayStatics::GetPlayerController(GetWorld(), 0)->PlayHapticEffect(m_hapticbase_motioncontroller, m_hand, intensity, false);
@@ -234,7 +232,7 @@ void AVRMotionController::GetActorNearHand(AActor *&actor)
 	m_component_grabsphere->GetOverlappingActors(actorarray, AActor::StaticClass());
 	for (const auto &eachactor : actorarray)
 	{
-		//!!!!!!!!!!!!!!!!!! implement some kind of check to filter actors that are interactible
+		//Maybe implement some kind of filter check here...
 		float tempoverlap{ (eachactor->GetActorLocation() - m_component_grabsphere->GetComponentLocation()).Size() };
 		if (tempoverlap < nearestoverlap)
 		{
@@ -248,16 +246,16 @@ void AVRMotionController::GetActorNearHand(AActor *&actor)
 void AVRMotionController::HandleTeleportationArc()
 {
 	//Clear tele arc
-	if (array_splinemeshes.IsValidIndex(0))
+	if (m_array_splinemeshes.IsValidIndex(0))
 	{
-		for (const auto &mesh : array_splinemeshes)
+		for (const auto &mesh : m_array_splinemeshes)
 		{
 			if (mesh)
 			{
 				mesh->DestroyComponent();
 			}
 		}
-		array_splinemeshes.Empty();
+		m_array_splinemeshes.Empty();
 	}
 	m_component_arcspline->ClearSplinePoints(true);
 
@@ -265,7 +263,7 @@ void AVRMotionController::HandleTeleportationArc()
 	{
 		FPredictProjectilePathParams params;
 		params.StartLocation = FVector{ m_component_arcdirection->GetComponentLocation() };
-		params.LaunchVelocity = FVector{ m_component_arcdirection->GetForwardVector() * telelaunchvelocity };
+		params.LaunchVelocity = FVector{ m_component_arcdirection->GetForwardVector() * m_telelaunchvelocity };
 		params.bTraceWithCollision = true;
 		params.ProjectileRadius = 0.0f;
 		TArray<TEnumAsByte<EObjectTypeQuery>> teleboundry;
@@ -278,7 +276,7 @@ void AVRMotionController::HandleTeleportationArc()
 		bool b_hit = UGameplayStatics::PredictProjectilePath(this, params, result);
 
 		UNavigationSystemV1* navsystem = Cast<UNavigationSystemV1>(GetWorld()->GetNavigationSystem());
-		bool b_pointhit;
+		bool b_pointhit{ false };
 		FNavLocation projectedlocation;
 		if (navsystem)
 		{
@@ -311,12 +309,12 @@ void AVRMotionController::HandleTeleportationArc()
 		m_component_teleportcylinder->SetWorldLocation(newlocation, false, nullptr, ETeleportType::TeleportPhysics);
 
 		//Rumble controller when a valid teleport location is found
-		if ((m_b_isvalidteledestination && !b_isvalidpreviousframeteledestination) || (b_isvalidpreviousframeteledestination && !m_b_isvalidteledestination))
+		if ((m_b_isvalidteledestination && !m_b_isvalidpreviousframeteledestination) || (m_b_isvalidpreviousframeteledestination && !m_b_isvalidteledestination))
 		{
 			RumbleController(0.3);
 		}
 
-		b_isvalidpreviousframeteledestination = b_tracetelesuccess;
+		m_b_isvalidpreviousframeteledestination = b_tracetelesuccess;
 
 		//Create small stub line when it fails to find a teleport location
 		if (!b_tracetelesuccess)
@@ -340,11 +338,11 @@ void AVRMotionController::HandleTeleportationArc()
 			USplineMeshComponent* splinemesh = NewObject<USplineMeshComponent>(m_component_arcspline);
 			splinemesh->RegisterComponentWithWorld(GetWorld());
 			splinemesh->SetMobility(EComponentMobility::Movable);
-			splinemesh->SetStaticMesh(mesh_beamspline);
-			UMaterialInstanceDynamic* dynamicMat = UMaterialInstanceDynamic::Create(mat_spline, NULL);
+			splinemesh->SetStaticMesh(m_mesh_beamspline);
+			UMaterialInstanceDynamic* dynamicMat = UMaterialInstanceDynamic::Create(m_mat_spline, NULL);
 			splinemesh->bCastDynamicShadow = false;
 			splinemesh->SetMaterial(0, dynamicMat);
-			array_splinemeshes.Emplace(splinemesh);
+			m_array_splinemeshes.Emplace(splinemesh);
 
 			FVector pointlocationstart{ array_arcpoints[i] };
 			FVector pointtangentstart{ m_component_arcspline->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Local) };
@@ -354,8 +352,8 @@ void AVRMotionController::HandleTeleportationArc()
 			splinemesh->SetStartAndEnd(pointlocationstart, pointtangentstart, pointlocationend, pointtangentend, true);
 		}
 
-		arcendpoint->SetVisibility(b_tracetelesuccess && m_b_isteleactive, false);
-		arcendpoint->SetWorldLocation(tracelocation, false, nullptr, ETeleportType::TeleportPhysics);
+		m_component_arcendpoint->SetVisibility(b_tracetelesuccess && m_b_isteleactive, false);
+		m_component_arcendpoint->SetWorldLocation(tracelocation, false, nullptr, ETeleportType::TeleportPhysics);
 		FRotator HMDrotation{ 0.0f };
 		FVector HMDposition{ 0.0f };
 		UHeadMountedDisplayFunctionLibrary::GetOrientationAndPosition(HMDrotation, HMDposition);
@@ -393,7 +391,7 @@ void AVRMotionController::DisableTele()
 	{
 		m_b_isteleactive = false;
 		m_component_teleportcylinder->SetVisibility(false, true);
-		arcendpoint->SetVisibility(false, false);
+		m_component_arcendpoint->SetVisibility(false, false);
 		m_component_roomscalemesh->SetVisibility(false, false);
 	}
 }

@@ -35,6 +35,7 @@ private:
 	//---Teleporter conditionals---//
 	bool m_b_isteleactive;
 	bool m_b_isvalidteledestination;
+	bool m_b_isvalidpreviousframeteledestination;
 
 	//---Teleport Rotation---//
 	FRotator m_telerotation;
@@ -46,89 +47,97 @@ private:
 	UPROPERTY()
 	class AVRPickupObject* m_attachedactor;
 
+	//---Array of spline mesh components---//
+	UPROPERTY()
+	TArray<class USplineMeshComponent*> m_array_splinemeshes;
+
+	//---Speed of tele arc launch velocity---//
+	float m_telelaunchvelocity;
+
+	//---Beam spline mesh and mat---//
+	UPROPERTY()
+	UStaticMesh* m_mesh_beamspline;
+	UPROPERTY()
+	UMaterial* m_mat_spline;
+
+
+
 
 
 	//---Room Scale---//
-	void SetupRoomScaleOutline();
+	void SetupRoomScaleOutline();	//Setup
+	void UpdateRoomScaleOutline();	//Update
 
 	//---Controller rumble---//
 	void RumbleController(float intensity);
-
-	//---Grabbing---//
-	void GetActorNearHand(AActor*& actor);
-
-	////////////////////////////////////////////////////////
-
-	float telelaunchvelocity;
-
-	bool b_isvalidpreviousframeteledestination;
-
-	UPROPERTY()
-	UStaticMesh* mesh_beamspline;
-	UPROPERTY()
-	UMaterial* mat_spline;
-
-	UPROPERTY()
-	UStaticMeshComponent* arcendpoint;
-
-	UPROPERTY()
-	TArray<class USplineMeshComponent*> array_splinemeshes;
-
-	//---Room Scale---//
-	void UpdateRoomScaleOutline();
-
-	//---Teleportation Arc---//
-	void HandleTeleportationArc();
 
 	//---Rumble Events---//
 	void GrabSphereOnOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 	void ControllerMeshOnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
 
+	//---Grabbing---//
+	void GetActorNearHand(AActor*& actor);
+
+	//---Teleportation Arc---//
+	void HandleTeleportationArc();
+
 protected:
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	//---Grip Enum---//
+	UPROPERTY(BlueprintReadOnly)
+	E_GRIPSTATE m_enum_gripstate;
+
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	USceneComponent* m_component_scene;
 
 	//---Hand---//
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	class UMotionControllerComponent* m_component_motioncontroller;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	USkeletalMeshComponent* m_component_handmesh;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	class UArrowComponent* m_component_arcdirection;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	class USplineComponent* m_component_arcspline;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	class USphereComponent* m_component_grabsphere;
 
+	//---Beam spline arc end point---//
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	UStaticMeshComponent *m_component_arcendpoint;
+
 	//---Teleport Cylinder---//
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	UStaticMeshComponent *m_component_teleportcylinder;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	UStaticMeshComponent *m_component_ring;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	UStaticMeshComponent *m_component_arrow;
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	UStaticMeshComponent *m_component_roomscalemesh;
 
 	//---SteamVRChaperone---//
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, Category = "Components")
 	class USteamVRChaperoneComponent *m_component_steamvrchaperone;
 
 	//---Begin Play---//
 	virtual void BeginPlay() override;
 
-	/////////////////////////////////////////////////////////////////////////////////////////////////
-
-	//---Grip Enum---//
-	UPROPERTY(BlueprintReadOnly)
-	E_GRIPSTATE gripstate;
-
 public:
+
+	//---Constructor---//
+	AVRMotionController();
+
+	//---Tick---//
+	virtual void Tick(float DeltaTime) override;
 
 	//---Grab and Release Actors---//
 	void GrabActor();
 	void ReleaseActor();
+
+	//---Teleportation---//
+	void ActivateTele();
+	void DisableTele();
 
 	//---Getter---//
 	bool GetIsTeleActive();
@@ -140,16 +149,4 @@ public:
 
 	//---Setter--//
 	void SetTeleRotation(FRotator newrot);
-
-	///////////////////////////////////////////////////////////////////////////////
-
-	//---Constructor---//
-	AVRMotionController();
-
-	//---Tick---//
-	virtual void Tick(float DeltaTime) override;
-
-	//---Teleportation---//
-	void ActivateTele();
-	void DisableTele();
 };
